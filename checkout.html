@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout — GOLDCRUST</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <div id="chrome"></div>
+
+  <section class="section section--tight">
+    <div class="wrap">
+      <p class="eyebrow">Almost there</p>
+      <h1 style="font-size:clamp(1.9rem,4vw,2.7rem);margin:12px 0">Checkout</h1>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0">
+    <div class="wrap" id="checkoutRoot"></div>
+  </section>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    mountChrome('checkout');
+
+    const root = $('#checkoutRoot');
+
+    function renderCheckout() {
+      if (!Store.items.length) {
+        root.innerHTML = `
+          <div class="empty" style="padding:80px 20px">
+            <i>🍗</i>
+            <h4>Your bucket is empty</h4>
+            <p>Pick something crispy first — checkout needs at least one item.</p>
+            <a class="btn btn--primary btn--lg" style="margin-top:22px" href="menu.html">Browse the menu</a>
+          </div>`;
+        return;
+      }
+
+      const b = Store.bill;
+
+      root.className = 'wrap checkout';
+      root.innerHTML = `
+        <!-- ------------------------------------------------ forms -->
+        <div>
+          <div class="panel">
+            <div class="panel__head"><b>1</b><h3>Delivery details</h3></div>
+            <div class="field-row">
+              <div class="field"><label for="ck-name">Full name</label>
+                <input id="ck-name" placeholder="Your name"></div>
+              <div class="field"><label for="ck-phone">Phone</label>
+                <input id="ck-phone" placeholder="10-digit mobile"></div>
+            </div>
+            <div class="field"><label for="ck-addr">Address</label>
+              <textarea id="ck-addr" rows="3" placeholder="Flat / building, street, landmark"></textarea></div>
+            <div class="field-row">
+              <div class="field"><label for="ck-city">City</label>
+                <input id="ck-city" value="Pune"></div>
+              <div class="field"><label for="ck-pin">PIN code</label>
+                <input id="ck-pin" placeholder="411001"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__head"><b>2</b><h3>When should it arrive?</h3></div>
+            <div class="pick-grid" data-group="slot">
+              <label class="pick is-on"><input type="radio" name="slot" checked>
+                <i>⚡</i><span>Right now<small>28–35 min</small></span></label>
+              <label class="pick"><input type="radio" name="slot">
+                <i>🕐</i><span>In an hour<small>Scheduled</small></span></label>
+              <label class="pick"><input type="radio" name="slot">
+                <i>🏬</i><span>Pick up<small>Koregaon Park</small></span></label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__head"><b>3</b><h3>Payment method</h3></div>
+            <div class="pick-grid" data-group="pay">
+              <label class="pick is-on"><input type="radio" name="pay" checked>
+                <i>📱</i><span>UPI<small>GPay, PhonePe</small></span></label>
+              <label class="pick"><input type="radio" name="pay">
+                <i>💳</i><span>Card<small>Visa, Mastercard</small></span></label>
+              <label class="pick"><input type="radio" name="pay">
+                <i>💵</i><span>Cash<small>On delivery</small></span></label>
+              <label class="pick"><input type="radio" name="pay">
+                <i>👛</i><span>Wallet<small>₹240 balance</small></span></label>
+            </div>
+            <p style="font-size:.8rem;color:var(--cream-faint);margin-top:16px">
+              Demo build — no payment is processed and no card details are collected.
+            </p>
+          </div>
+        </div>
+
+        <!-- ---------------------------------------------- summary -->
+        <div class="panel summary">
+          <div class="panel__head"><b>🧾</b><h3>Order summary</h3></div>
+
+          <div class="summary__lines">
+            ${Store.items.map(l => `
+              <div class="cart-line">
+                <div class="cart-line__art">${l.emoji}</div>
+                <div>
+                  <h4>${escapeHTML(l.name)}</h4>
+                  <p class="cart-line__opts">${escapeHTML(l.optionText || 'As it comes')}</p>
+                  <div class="cart-line__foot">
+                    <div class="stepper" data-key="${escapeHTML(l.key)}">
+                      <button data-step="-1" aria-label="Decrease">−</button>
+                      <span>${l.qty}</span>
+                      <button data-step="1" aria-label="Increase">+</button>
+                    </div>
+                    <span class="cart-line__price">${money(l.unit * l.qty)}</span>
+                  </div>
+                </div>
+              </div>`).join('')}
+          </div>
+
+          <div class="search" style="margin-bottom:18px">
+            <input id="promo" placeholder="Have a coupon? e.g. CRUST50" aria-label="Coupon code">
+            <button class="btn btn--ghost btn--sm" id="applyPromo">Apply</button>
+          </div>
+          <p id="promoNote" style="font-size:.8rem;margin:-10px 0 16px;display:none"></p>
+
+          <div class="totals">
+            <div><span>Item total</span><span>${money(b.sub)}</span></div>
+            <div id="discountRow" style="display:none"><span>Coupon discount</span><span class="is-free"></span></div>
+            <div><span>Delivery</span><span class="${b.delivery ? '' : 'is-free'}">${b.delivery ? money(b.delivery) : 'FREE'}</span></div>
+            <div><span>Packaging</span><span>${money(b.packaging)}</span></div>
+            <div><span>Taxes (5%)</span><span>${money(b.tax)}</span></div>
+            <div class="grand"><span>To pay</span><span id="grandTotal">${money(b.total)}</span></div>
+          </div>
+
+          <button class="btn btn--primary btn--block btn--lg" id="placeOrder">Place order</button>
+          <a class="btn btn--ghost btn--block btn--sm" style="margin-top:10px" href="menu.html">Add more items</a>
+        </div>`;
+
+      /* Segmented pickers behave like radio groups. */
+      $$('.pick-grid').forEach(grid => {
+        grid.addEventListener('click', e => {
+          const pick = e.target.closest('.pick');
+          if (!pick) return;
+          $$('.pick', grid).forEach(p => p.classList.remove('is-on'));
+          pick.classList.add('is-on');
+        });
+      });
+
+      $$('.stepper', root).forEach(st => {
+        st.addEventListener('click', e => {
+          const btn = e.target.closest('button');
+          if (!btn) return;
+          const line = Store.items.find(i => i.key === st.dataset.key);
+          Store.setQty(st.dataset.key, line.qty + Number(btn.dataset.step));
+          renderCheckout();
+        });
+      });
+
+      /* Coupons are validated against the static OFFERS list — display only. */
+      let discount = 0;
+      $('#applyPromo').addEventListener('click', () => {
+        const code = $('#promo').value.trim().toUpperCase();
+        const note = $('#promoNote');
+        const hit  = OFFERS.find(o => o.code === code);
+        note.style.display = 'block';
+
+        if (!hit) {
+          discount = 0;
+          note.style.color = 'var(--red)';
+          note.textContent = 'That code is not valid right now.';
+        } else if (code === 'CRUST50') {
+          discount = Math.min(120, Math.round(b.sub * 0.5));
+          note.style.color = 'var(--green)';
+          note.textContent = `CRUST50 applied — you saved ${money(discount)}.`;
+        } else if (code === 'BUCKET99') {
+          discount = b.sub >= 599 ? 99 : 0;
+          note.style.color = discount ? 'var(--green)' : 'var(--red)';
+          note.textContent = discount ? 'BUCKET99 applied — ₹99 off.'
+                                      : 'BUCKET99 needs a minimum order of ₹599.';
+        } else {
+          discount = b.delivery;
+          note.style.color = discount ? 'var(--green)' : 'var(--cream-faint)';
+          note.textContent = discount ? 'Delivery is on us.' : 'Delivery was already free.';
+        }
+
+        const row = $('#discountRow');
+        row.style.display = discount ? 'flex' : 'none';
+        row.querySelector('span:last-child').textContent = '− ' + money(discount);
+        $('#grandTotal').textContent = money(b.total - discount);
+      });
+
+      $('#placeOrder').addEventListener('click', async () => {
+        const name = $('#ck-name').value.trim();
+        const addr = $('#ck-addr').value.trim();
+        if (!name || !addr) {
+          toast('Add your name and address first', '📝');
+          (!name ? $('#ck-name') : $('#ck-addr')).focus();
+          return;
+        }
+        
+        try {
+          const res = await fetch('/api/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              phone: $('#ck-phone').value.trim(),
+              address: addr,
+              city: $('#ck-city').value.trim(),
+              pin: $('#ck-pin').value.trim(),
+              items: Store.items,
+              total: b.total - discount
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showSuccess(b.total - discount, data.order_id);
+          }
+        } catch (e) {
+          toast('Error placing order', '❌');
+        }
+      });
+    }
+
+    function showSuccess(total, orderNo) {
+      const eta = new Date(Date.now() + 28 * 60000)
+        .toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      if (!orderNo) orderNo = 'GC' + Math.floor(100000 + Math.random() * 900000);
+
+      Store.clear();
+      root.className = 'wrap';
+      root.innerHTML = `
+        <div class="success">
+          <div class="success__badge">🍗</div>
+          <h1>Order confirmed!</h1>
+          <p>
+            Order <strong>#${orderNo}</strong> is with the kitchen. Your chicken hits
+            the fryer in a minute and should reach you by <strong>${eta}</strong>.
+          </p>
+          <p style="font-size:.9rem">Total paid: <strong style="color:var(--amber-bright)">${money(total)}</strong></p>
+          <div class="row gap-12" style="justify-content:center;margin-top:26px;flex-wrap:wrap">
+            <a class="btn btn--primary btn--lg" href="menu.html">Order something else</a>
+            <a class="btn btn--ghost btn--lg" href="index.html">Back home</a>
+          </div>
+        </div>`;
+      toast('Order placed — hang tight!', '🛵');
+    }
+
+    renderCheckout();
+  </script>
+</body>
+</html>

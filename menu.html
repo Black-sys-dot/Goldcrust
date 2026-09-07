@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menu — GOLDCRUST</title>
+  <meta name="description" content="The full Goldcrust menu: buckets, burgers, wraps, sides, desserts and drinks.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <div id="chrome"></div>
+
+  <section class="section section--tight">
+    <div class="wrap">
+      <p class="eyebrow">412 kitchens · fried to order</p>
+      <h1 style="font-size:clamp(2rem,4.4vw,3rem);margin:12px 0 10px">The full menu</h1>
+      <p style="color:var(--cream-dim);max-width:52ch">
+        Everything we make, in one place. Tap any dish to pick your size, spice level and extras.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0">
+    <div class="wrap menu-layout">
+
+      <!-- ------------------------------------------------- sidebar -->
+      <aside>
+        <div class="sidebar">
+          <h5>Categories</h5>
+          <div class="sidecats" id="sideCats"></div>
+        </div>
+
+        <div class="sidebar">
+          <h5>Free delivery</h5>
+          <p style="font-size:.85rem;color:var(--cream-faint)">
+            On every order above ₹599. No coupon needed — it comes off automatically.
+          </p>
+          <a class="btn btn--primary btn--sm btn--block" style="margin-top:14px" href="#" id="openCartSide">View cart</a>
+        </div>
+      </aside>
+
+      <!-- ---------------------------------------------------- list -->
+      <div>
+        <div class="filterbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+            </svg>
+            <input id="menuSearch" type="search" placeholder="Search dishes, e.g. zinger" aria-label="Search dishes">
+          </div>
+
+          <label class="toggle" id="vegToggle">
+            <input type="checkbox" id="vegOnly"> Veg only
+          </label>
+
+          <select class="select" id="sortBy" aria-label="Sort dishes">
+            <option value="popular">Most popular</option>
+            <option value="rating">Top rated</option>
+            <option value="low">Price: low to high</option>
+            <option value="high">Price: high to low</option>
+            <option value="fast">Fastest to make</option>
+          </select>
+        </div>
+
+        <p class="result-note" id="resultNote"></p>
+        <div class="grid" id="menuGrid"></div>
+      </div>
+    </div>
+  </section>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    mountChrome('menu');
+
+    const params = new URLSearchParams(location.search);
+    const filters = {
+      cat: params.get('cat') || 'all',
+      q: params.get('q') || '',
+      veg: false,
+      sort: 'popular',
+    };
+    $('#menuSearch').value = filters.q;
+
+    const countIn = id => id === 'all' ? MENU.length : MENU.filter(i => i.category === id).length;
+
+    function renderSideCats() {
+      $('#sideCats').innerHTML = CATEGORIES.map(c => `
+        <button class="sidecat ${c.id === filters.cat ? 'is-active' : ''}" data-cat="${c.id}">
+          <span>${c.emoji}</span>${c.name}<small>${countIn(c.id)}</small>
+        </button>`).join('');
+    }
+
+    function apply() {
+      let list = MENU.slice();
+
+      if (filters.cat !== 'all') list = list.filter(i => i.category === filters.cat);
+      if (filters.veg)           list = list.filter(i => i.tags.includes('veg'));
+
+      const q = filters.q.trim().toLowerCase();
+      if (q) list = list.filter(i =>
+        (i.name + ' ' + i.desc + ' ' + i.tags.join(' ')).toLowerCase().includes(q));
+
+      const sorters = {
+        popular: (a, b) => parseInt(b.likes) - parseInt(a.likes),
+        rating:  (a, b) => b.rating - a.rating || parseInt(b.likes) - parseInt(a.likes),
+        low:     (a, b) => a.price - b.price,
+        high:    (a, b) => b.price - a.price,
+        fast:    (a, b) => a.time - b.time,
+      };
+      list.sort(sorters[filters.sort]);
+
+      const grid = $('#menuGrid');
+      if (!list.length) {
+        grid.className = '';
+        grid.innerHTML = `
+          <div class="empty">
+            <i>🔍</i>
+            <h4>No dishes match that</h4>
+            <p>Try a different search, or clear the veg-only filter.</p>
+          </div>`;
+      } else {
+        grid.className = 'grid';
+        grid.innerHTML = list.map(foodCard).join('');
+      }
+
+      const catName = CATEGORIES.find(c => c.id === filters.cat).name;
+      $('#resultNote').textContent =
+        `${list.length} ${list.length === 1 ? 'dish' : 'dishes'} in ${catName}` +
+        (q ? ` matching “${filters.q}”` : '');
+
+      renderSideCats();
+    }
+
+    $('#sideCats').addEventListener('click', e => {
+      const btn = e.target.closest('[data-cat]');
+      if (!btn) return;
+      filters.cat = btn.dataset.cat;
+      apply();
+    });
+
+    let debounce;
+    $('#menuSearch').addEventListener('input', e => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => { filters.q = e.target.value; apply(); }, 160);
+    });
+
+    $('#vegOnly').addEventListener('change', e => {
+      filters.veg = e.target.checked;
+      $('#vegToggle').classList.toggle('is-on', filters.veg);
+      apply();
+    });
+
+    $('#sortBy').addEventListener('change', e => { filters.sort = e.target.value; apply(); });
+
+    $('#openCartSide').addEventListener('click', e => { e.preventDefault(); openCart(); });
+
+    apply();
+  </script>
+</body>
+</html>

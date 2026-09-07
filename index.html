@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GOLDCRUST — Crispy chicken, delivered hot</title>
+  <meta name="description" content="Order signature fried chicken, burgers and buckets from GOLDCRUST. Hot in 30 minutes or it's on us.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <div id="chrome"></div>
+
+  <!-- ============================================================ hero -->
+  <section class="hero">
+    <div class="wrap hero__grid">
+      <div>
+        <p class="eyebrow">🔥 Fresh out of the fryer</p>
+        <h1>Hello, hungry!<em>Welcome to Goldcrust.</em></h1>
+        <p class="hero__sub">
+          Hand-breaded every morning, fried to order, and at your door in under
+          30 minutes — still crackling. 412 kitchens, one obsessive recipe.
+        </p>
+
+        <div class="search search--hero" style="margin-top:26px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+          </svg>
+          <input id="heroSearch" type="search" placeholder="Search your favourite food…" aria-label="Search the menu">
+          <button class="btn btn--primary" id="heroSearchBtn">Search</button>
+        </div>
+
+        <div class="hero__cta">
+          <a class="btn btn--primary btn--lg" href="menu.html">Order now</a>
+          <a class="btn btn--ghost btn--lg" href="#featured">See today's picks</a>
+        </div>
+
+        <div class="hero__stats">
+          <div><b>412</b><span>Kitchens nationwide</span></div>
+          <div><b>28 min</b><span>Average delivery</span></div>
+          <div><b>4.8 ★</b><span>From 1.2M reviews</span></div>
+        </div>
+      </div>
+
+      <div class="hero__art">
+        <div class="hero__plate"><span class="dish__food">🍗</span></div>
+        <div class="hero__chip hero__chip--a"><i>🛵</i><span>Hot in 28 min<small>Koregaon Park</small></span></div>
+        <div class="hero__chip hero__chip--b"><i>⭐</i><span>4.8 rating<small>1.2M reviews</small></span></div>
+        <div class="hero__chip hero__chip--c"><i>🎁</i><span>50% off<small>First order</small></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================ category + rail -->
+  <section class="section section--tight" id="featured">
+    <div class="wrap">
+      <div class="chips no-bar" id="homeChips"></div>
+    </div>
+
+    <div class="wrap" style="margin-top:26px">
+      <div class="rail-shell">
+        <div class="rail-shell__head">
+          <h2>Type of food</h2>
+          <div class="push"></div>
+          <a class="btn btn--ghost btn--sm" href="menu.html">View all</a>
+        </div>
+        <div class="rail no-bar" id="featureRail"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================= offers -->
+  <section class="section section--tight" id="offers">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Save more</p>
+          <h2>Offers running today</h2>
+        </div>
+      </div>
+      <div class="offer-grid" id="offerGrid"></div>
+    </div>
+  </section>
+
+  <!-- ====================================================== favourites -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Most ordered</p>
+          <h2>Favourite food</h2>
+          <p>What everyone in your city is eating right now.</p>
+        </div>
+        <a class="btn btn--ghost btn--sm push" href="menu.html">Full menu</a>
+      </div>
+      <div class="fav-list" id="favList"></div>
+    </div>
+  </section>
+
+  <!-- ====================================================== bestsellers -->
+  <section class="section section--tight">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Straight from the fryer</p>
+          <h2>Trending this week</h2>
+        </div>
+      </div>
+      <div class="grid" id="trendGrid"></div>
+    </div>
+  </section>
+
+  <!-- ==================================================== how it works -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Simple as that</p>
+          <h2>How it works</h2>
+        </div>
+      </div>
+      <div class="steps">
+        <div class="step"><b>📍</b><h4>Set your location</h4><p>We route your order to the nearest of our 412 kitchens.</p></div>
+        <div class="step"><b>🍗</b><h4>Build your bucket</h4><p>Pick your pieces, spice level and the sides that matter.</p></div>
+        <div class="step"><b>👨‍🍳</b><h4>Fried to order</h4><p>Nothing sits under a lamp. Your food starts when you tap pay.</p></div>
+        <div class="step"><b>🛵</b><h4>Hot at your door</h4><p>Insulated bags, live tracking, 30 minutes or it's free.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================= footer -->
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer__grid">
+        <div>
+          <a class="brand" href="index.html">
+            <span class="brand__mark">🍗</span>
+            <span class="brand__name">GOLDCRUST<span>Crispy · Golden</span></span>
+          </a>
+          <p>Serving the same recipe since 1987. Fried fresh, never frozen, always golden.</p>
+        </div>
+        <div>
+          <h5>Order</h5>
+          <ul>
+            <li><a href="menu.html">Full menu</a></li>
+            <li><a href="index.html#offers">Offers</a></li>
+            <li><a href="menu.html">Buckets &amp; combos</a></li>
+            <li><a href="checkout.html">Track order</a></li>
+          </ul>
+        </div>
+        <div>
+          <h5>Company</h5>
+          <ul>
+            <li><a href="#">About us</a></li>
+            <li><a href="#">Our kitchens</a></li>
+            <li><a href="#">Careers</a></li>
+            <li><a href="#">Franchise</a></li>
+          </ul>
+        </div>
+        <div>
+          <h5>Help</h5>
+          <ul>
+            <li><a href="#">Contact support</a></li>
+            <li><a href="#">Allergen info</a></li>
+            <li><a href="#">Refund policy</a></li>
+            <li><a href="#">Privacy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer__base">
+        <span>© 2026 Goldcrust Foods. Frontend demo — no real orders are placed.</span>
+        <span>Made with 🔥 and a lot of oil.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    mountChrome('home');
+
+    /* Category chips deep-link into the menu page. */
+    $('#homeChips').innerHTML = CATEGORIES
+      .map(c => `<a class="chip" href="menu.html?cat=${c.id}"><span>${c.emoji}</span>${c.name}</a>`)
+      .join('');
+
+    /* The amber rail mirrors the reference layout: big card, stars, "Got it". */
+    $('#featureRail').innerHTML = MENU
+      .filter(i => i.tags.includes('bestseller'))
+      .slice(0, 6)
+      .map(featureCard).join('');
+
+    $('#offerGrid').innerHTML = OFFERS.map(o => `
+      <div class="offer">
+        <i>${o.emoji}</i>
+        <div>
+          <h4>${o.title}</h4>
+          <p>${o.sub}</p>
+          <code>${o.code}</code>
+        </div>
+      </div>`).join('');
+
+    $('#favList').innerHTML = [...MENU]
+      .sort((a, b) => parseInt(b.likes) - parseInt(a.likes))
+      .slice(0, 4)
+      .map(favRow).join('');
+
+    $('#trendGrid').innerHTML = MENU
+      .filter(i => i.tags.includes('new') || i.rating === 5)
+      .slice(0, 8)
+      .map(foodCard).join('');
+
+    /* Hero search hands off to the menu page. */
+    const goSearch = () => {
+      const q = $('#heroSearch').value.trim();
+      location.href = 'menu.html' + (q ? '?q=' + encodeURIComponent(q) : '');
+    };
+    $('#heroSearchBtn').addEventListener('click', goSearch);
+    $('#heroSearch').addEventListener('keydown', e => { if (e.key === 'Enter') goSearch(); });
+  </script>
+</body>
+</html>
