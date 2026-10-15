@@ -6,7 +6,8 @@
   <title>GOLDCRUST — Crispy chicken, delivered hot</title>
   <meta name="description" content="Order signature fried chicken, burgers and buckets from GOLDCRUST. Hot in 30 minutes or it's on us.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
-  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/styles.css?v=7">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
   <div id="chrome"></div>
@@ -120,10 +121,28 @@
         </div>
       </div>
       <div class="steps">
-        <div class="step"><b>📍</b><h4>Set your location</h4><p>We route your order to the nearest of our 412 kitchens.</p></div>
+        <div class="step"><b>📍</b><h4>Set your location</h4><p>Delivery goes to the closest Goldcrust kitchen in Pune. Pickup lets you choose.</p></div>
         <div class="step"><b>🍗</b><h4>Build your bucket</h4><p>Pick your pieces, spice level and the sides that matter.</p></div>
         <div class="step"><b>👨‍🍳</b><h4>Fried to order</h4><p>Nothing sits under a lamp. Your food starts when you tap pay.</p></div>
         <div class="step"><b>🛵</b><h4>Hot at your door</h4><p>Insulated bags, live tracking, 30 minutes or it's free.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================== kitchens -->
+  <section class="section" id="branches">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Pune</p>
+          <h2>Sixteen kitchens</h2>
+          <p>One brand. Each order is cooked at a single branch — the closest one for delivery, or the one you pick for takeaway.</p>
+        </div>
+        <a class="btn btn--ghost btn--sm push" href="kitchen.html">Kitchen board</a>
+      </div>
+      <div class="branch-layout">
+        <div id="branchMap" class="branch-map"></div>
+        <div id="branchList" class="branch-list"></div>
       </div>
     </div>
   </section>
@@ -145,14 +164,15 @@
             <li><a href="menu.html">Full menu</a></li>
             <li><a href="index.html#offers">Offers</a></li>
             <li><a href="menu.html">Buckets &amp; combos</a></li>
-            <li><a href="checkout.html">Track order</a></li>
+            <li><a href="tickets.html">Tickets</a></li>
           </ul>
         </div>
         <div>
           <h5>Company</h5>
           <ul>
             <li><a href="#">About us</a></li>
-            <li><a href="#">Our kitchens</a></li>
+            <li><a href="index.html#branches">Our kitchens</a></li>
+            <li><a href="kitchen.html">Kitchen board</a></li>
             <li><a href="#">Careers</a></li>
             <li><a href="#">Franchise</a></li>
           </ul>
@@ -168,14 +188,15 @@
         </div>
       </div>
       <div class="footer__base">
-        <span>© 2026 Goldcrust Foods. Frontend demo — no real orders are placed.</span>
+        <span>© 2026 Goldcrust Foods. Pune demo — Razorpay test payments only.</span>
         <span>Made with 🔥 and a lot of oil.</span>
       </div>
     </div>
   </footer>
 
   <script src="assets/js/data.js"></script>
-  <script src="assets/js/app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="assets/js/app.js?v=5"></script>
   <script>
     mountChrome('home');
 
@@ -217,6 +238,35 @@
     };
     $('#heroSearchBtn').addEventListener('click', goSearch);
     $('#heroSearch').addEventListener('keydown', e => { if (e.key === 'Enter') goSearch(); });
+
+    fetch('/api/branches').then(r => r.json()).then(data => {
+      const branches = data.branches || [];
+      $('#branchList').innerHTML = branches.map(b => `
+        <button type="button" class="branch-row" data-id="${b.id}">
+          <strong>${escapeHTML(b.name)}</strong>
+          <span>${escapeHTML(b.address)}</span>
+        </button>`).join('');
+      if (!window.L || !$('#branchMap')) return;
+      const map = L.map('branchMap', { scrollWheelZoom: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap',
+      }).addTo(map);
+      const markers = {};
+      branches.forEach(b => {
+        markers[b.id] = L.marker([b.lat, b.lng]).addTo(map).bindPopup(`<b>${b.name}</b><br>${b.address}`);
+      });
+      map.fitBounds(branches.map(b => [b.lat, b.lng]), { padding: [28, 28] });
+      $('#branchList').addEventListener('click', e => {
+        const row = e.target.closest('.branch-row');
+        if (!row) return;
+        $$('.branch-row').forEach(el => el.classList.remove('is-on'));
+        row.classList.add('is-on');
+        const b = branches.find(item => item.id === row.dataset.id);
+        map.setView([b.lat, b.lng], 14);
+        markers[b.id].openPopup();
+      });
+    });
   </script>
 </body>
 </html>

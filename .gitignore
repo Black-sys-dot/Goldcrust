@@ -4,3 +4,8 @@ __pycache__/
 .env
 .claude/
 .commandcode/
+rzp-key.csv
+data/*.db
+data/*.db-wal
+data/*.db-shm
+.aws-deploy.env

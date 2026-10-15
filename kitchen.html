@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitchen — GOLDCRUST</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css?v=7">
+</head>
+<body>
+  <header class="wrap kitchen-top">
+    <a class="brand" href="index.html">
+      <span class="brand__mark">🍗</span>
+      <span class="brand__name">GOLDCRUST<span>Kitchen</span></span>
+    </a>
+    <div class="push"></div>
+    <a class="btn btn--ghost btn--sm" href="menu.html">Customer site</a>
+  </header>
+
+  <main class="section section--tight">
+    <div class="wrap">
+      <p class="eyebrow">Branch board</p>
+      <h1 style="font-size:clamp(1.8rem,4vw,2.6rem);margin:8px 0 6px">Orders for this kitchen</h1>
+      <p class="hint" style="margin-bottom:18px">
+        Demo board, no login. A kitchen only receives orders assigned to it, and only after payment
+        (or pay-at-counter on pickup).
+      </p>
+      <div class="kitchen-switch" id="switch"></div>
+      <div id="board" class="k-board" style="margin-top:18px"></div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const escapeHTML = str => String(str).replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+    const money = n => '₹' + Math.round(n).toLocaleString('en-IN');
+    const LABELS = {
+      confirmed: 'New',
+      preparing: 'On the fryer',
+      ready: 'Ready',
+      completed: 'Done',
+    };
+    const NEXT = {
+      confirmed: ['preparing', 'Start cooking'],
+      preparing: ['ready', 'Mark ready'],
+      ready: ['completed', 'Complete'],
+    };
+
+    let branches = [];
+    let current = new URLSearchParams(location.search).get('branch') || '';
+
+    function when(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderSwitch() {
+      $('#switch').innerHTML = branches.map(b => `
+        <button type="button" data-id="${b.id}" class="${b.id === current ? 'is-on' : ''}">
+          ${escapeHTML(b.name)}
+        </button>`).join('');
+    }
+
+    function renderOrders(orders) {
+      const board = $('#board');
+      if (!orders.length) {
+        board.innerHTML = `
+          <div class="empty" style="padding:48px 16px">
+            <i>👨‍🍳</i>
+            <h4>No live orders</h4>
+            <p>Paid orders for this branch show up here. Unpaid checkouts stay hidden.</p>
+          </div>`;
+        return;
+      }
+      board.innerHTML = orders.map(order => {
+        const step = NEXT[order.status];
+        const pay = order.payment_method === 'cod' ? 'Pay at counter' : 'Paid online';
+        const mode = order.mode === 'pickup' ? 'Pickup' : 'Delivery';
+        return `
+          <article class="k-card">
+            <header>
+              <div>
+                <h3>#${escapeHTML(order.public_id)} · ${escapeHTML(order.customer_name)}</h3>
+                <p class="k-meta">${mode} · ${pay} · ${when(order.created_at)} · ${escapeHTML(order.phone || '')}</p>
+              </div>
+              <span class="pill ${order.status === 'completed' ? 'pill--done' : ''} ${order.payment_method === 'cod' ? 'pill--cod' : ''}">
+                ${LABELS[order.status] || order.status}
+              </span>
+            </header>
+            <p class="k-meta">${escapeHTML(order.mode === 'delivery' ? (order.address || '') : order.branch.address)}</p>
+            <ul class="k-items">
+              ${order.items.map(item => `
+                <li>${item.qty} × ${escapeHTML(item.name)}
+                  <span class="k-meta"> — ${escapeHTML(item.option_text || '')}</span></li>`).join('')}
+            </ul>
+            <div class="row gap-12" style="align-items:center">
+              <strong>${money(order.total)}</strong>
+              <div class="push"></div>
+              ${step ? `<button class="btn btn--primary btn--sm" data-advance="${order.public_id}" data-status="${step[0]}">${step[1]}</button>` : ''}
+            </div>
+          </article>`;
+      }).join('');
+    }
+
+    async function load() {
+      const res = await fetch('/api/kitchen/' + current + '/orders');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderOrders(data.orders);
+    }
+
+    $('#switch').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      current = btn.dataset.id;
+      history.replaceState(null, '', 'kitchen.html?branch=' + current);
+      renderSwitch();
+      load();
+    });
+
+    $('#board').addEventListener('click', async e => {
+      const btn = e.target.closest('[data-advance]');
+      if (!btn) return;
+      btn.disabled = true;
+      await fetch(`/api/kitchen/${current}/orders/${btn.dataset.advance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: btn.dataset.status }),
+      });
+      load();
+    });
+
+    fetch('/api/branches').then(r => r.json()).then(data => {
+      branches = data.branches;
+      if (!branches.some(b => b.id === current)) current = branches[0].id;
+      renderSwitch();
+      load();
+      setInterval(load, 4000);
+    });
+  </script>
+</body>
+</html>

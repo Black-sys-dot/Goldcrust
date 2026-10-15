@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Checkout — GOLDCRUST</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
-  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/styles.css?v=7">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
   <div id="chrome"></div>
@@ -21,15 +22,58 @@
     <div class="wrap" id="checkoutRoot"></div>
   </section>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script src="assets/js/data.js"></script>
-  <script src="assets/js/app.js"></script>
+  <script src="assets/js/app.js?v=5"></script>
   <script>
     mountChrome('checkout');
 
     const root = $('#checkoutRoot');
+    const draft = {
+      mode: 'delivery',
+      slot: 'now',
+      pay: 'razorpay',
+      lat: null,
+      lng: null,
+      branchId: null,
+      coupon: '',
+      discount: 0,
+      branches: [],
+    };
+    let map, markers = {}, customerMarker;
+
+    function previewBill() {
+      const sub = Store.subtotal;
+      const delivery = draft.mode === 'pickup' || sub === 0 || sub >= FEES.freeDeliveryOver ? 0 : FEES.delivery;
+      const packaging = sub === 0 ? 0 : FEES.packaging;
+      const tax = Math.round(sub * FEES.taxRate);
+      return { sub, delivery, packaging, tax, total: Math.max(0, sub + delivery + packaging + tax - draft.discount) };
+    }
+
+    function nearest() {
+      return draft.branches.find(b => b.nearest) || null;
+    }
+
+    function selectedBranch() {
+      if (draft.mode === 'delivery') return nearest();
+      return draft.branches.find(b => b.id === draft.branchId) || nearest() || draft.branches[0] || null;
+    }
+
+    function captureFields() {
+      if (!$('#ck-name')) return;
+      draft.name = $('#ck-name').value;
+      draft.phone = $('#ck-phone').value;
+      draft.address = $('#ck-addr')?.value || '';
+      draft.city = $('#ck-city')?.value || 'Pune';
+      draft.pin = $('#ck-pin')?.value || '';
+    }
 
     function renderCheckout() {
+      captureFields();
+      if (map) { map.remove(); map = null; customerMarker = null; markers = {}; }
       if (!Store.items.length) {
+        root.className = 'wrap';
         root.innerHTML = `
           <div class="empty" style="padding:80px 20px">
             <i>🍗</i>
@@ -40,64 +84,79 @@
         return;
       }
 
-      const b = Store.bill;
-
+      const b = previewBill();
       root.className = 'wrap checkout';
       root.innerHTML = `
-        <!-- ------------------------------------------------ forms -->
         <div>
           <div class="panel">
-            <div class="panel__head"><b>1</b><h3>Delivery details</h3></div>
+            <div class="panel__head"><b>1</b><h3>Your details</h3></div>
             <div class="field-row">
               <div class="field"><label for="ck-name">Full name</label>
-                <input id="ck-name" placeholder="Your name"></div>
+                <input id="ck-name" placeholder="Your name" autocomplete="name" value="${escapeHTML(draft.name || '')}"></div>
               <div class="field"><label for="ck-phone">Phone</label>
-                <input id="ck-phone" placeholder="10-digit mobile"></div>
-            </div>
-            <div class="field"><label for="ck-addr">Address</label>
-              <textarea id="ck-addr" rows="3" placeholder="Flat / building, street, landmark"></textarea></div>
-            <div class="field-row">
-              <div class="field"><label for="ck-city">City</label>
-                <input id="ck-city" value="Pune"></div>
-              <div class="field"><label for="ck-pin">PIN code</label>
-                <input id="ck-pin" placeholder="411001"></div>
+                <input id="ck-phone" inputmode="numeric" placeholder="10-digit mobile" autocomplete="tel" value="${escapeHTML(draft.phone || '')}"></div>
             </div>
           </div>
 
           <div class="panel">
-            <div class="panel__head"><b>2</b><h3>When should it arrive?</h3></div>
-            <div class="pick-grid" data-group="slot">
-              <label class="pick is-on"><input type="radio" name="slot" checked>
+            <div class="panel__head"><b>2</b><h3>Delivery or pickup</h3></div>
+            <div class="pick-grid" data-group="mode">
+              <label class="pick ${draft.mode === 'delivery' ? 'is-on' : ''}">
+                <input type="radio" name="mode" value="delivery" ${draft.mode === 'delivery' ? 'checked' : ''}>
+                <i>🛵</i><span>Home delivery<small>Nearest kitchen</small></span></label>
+              <label class="pick ${draft.mode === 'pickup' ? 'is-on' : ''}">
+                <input type="radio" name="mode" value="pickup" ${draft.mode === 'pickup' ? 'checked' : ''}>
+                <i>🏬</i><span>Pickup<small>Choose a kitchen</small></span></label>
+            </div>
+
+            <div id="deliveryFields" style="margin-top:18px;${draft.mode === 'delivery' ? '' : 'display:none'}">
+              <div class="field"><label for="ck-addr">Address</label>
+                <textarea id="ck-addr" rows="3" placeholder="Flat / building, street, landmark">${escapeHTML(draft.address || '')}</textarea></div>
+              <div class="field-row">
+                <div class="field"><label for="ck-city">City</label>
+                  <input id="ck-city" value="${escapeHTML(draft.city || 'Pune')}"></div>
+                <div class="field"><label for="ck-pin">PIN code</label>
+                  <input id="ck-pin" inputmode="numeric" placeholder="411001" value="${escapeHTML(draft.pin || '')}"></div>
+              </div>
+              <button class="btn btn--ghost btn--sm" type="button" id="useLocation">Use my location</button>
+              <p class="hint" id="locNote">We pick the closest Pune kitchen. You cannot change it on delivery.</p>
+            </div>
+
+            <div id="pickupFields" style="margin-top:18px;${draft.mode === 'pickup' ? '' : 'display:none'}">
+              <div class="field"><label for="ck-branch">Pickup kitchen</label>
+                <select id="ck-branch"></select></div>
+              <p class="hint">The closest kitchen is selected. Change it if you want the parcel from somewhere else.</p>
+            </div>
+
+            <div id="assigned"></div>
+            <div id="checkoutMap" class="branch-map branch-map--small"></div>
+
+            <div class="pick-grid" data-group="slot" style="margin-top:16px">
+              <label class="pick ${draft.slot === 'now' ? 'is-on' : ''}">
+                <input type="radio" name="slot" value="now" ${draft.slot === 'now' ? 'checked' : ''}>
                 <i>⚡</i><span>Right now<small>28–35 min</small></span></label>
-              <label class="pick"><input type="radio" name="slot">
+              <label class="pick ${draft.slot === 'hour' ? 'is-on' : ''}">
+                <input type="radio" name="slot" value="hour" ${draft.slot === 'hour' ? 'checked' : ''}>
                 <i>🕐</i><span>In an hour<small>Scheduled</small></span></label>
-              <label class="pick"><input type="radio" name="slot">
-                <i>🏬</i><span>Pick up<small>Koregaon Park</small></span></label>
             </div>
           </div>
 
           <div class="panel">
-            <div class="panel__head"><b>3</b><h3>Payment method</h3></div>
-            <div class="pick-grid" data-group="pay">
-              <label class="pick is-on"><input type="radio" name="pay" checked>
-                <i>📱</i><span>UPI<small>GPay, PhonePe</small></span></label>
-              <label class="pick"><input type="radio" name="pay">
-                <i>💳</i><span>Card<small>Visa, Mastercard</small></span></label>
-              <label class="pick"><input type="radio" name="pay">
-                <i>💵</i><span>Cash<small>On delivery</small></span></label>
-              <label class="pick"><input type="radio" name="pay">
-                <i>👛</i><span>Wallet<small>₹240 balance</small></span></label>
+            <div class="panel__head"><b>3</b><h3>Payment</h3></div>
+            <div class="pick-grid" id="payGrid">
+              <label class="pick ${draft.pay === 'razorpay' ? 'is-on' : ''}" data-pay="razorpay">
+                <input type="radio" name="pay" value="razorpay" ${draft.pay === 'razorpay' ? 'checked' : ''}>
+                <i>📱</i><span>UPI or card<small>Razorpay test</small></span></label>
+              <label class="pick ${draft.pay === 'cod' ? 'is-on' : ''}" data-pay="cod" id="codPick" style="${draft.mode === 'pickup' ? '' : 'display:none'}">
+                <input type="radio" name="pay" value="cod" ${draft.pay === 'cod' ? 'checked' : ''}>
+                <i>💵</i><span>Pay at counter<small>Pickup only</small></span></label>
             </div>
-            <p style="font-size:.8rem;color:var(--cream-faint);margin-top:16px">
-              Demo build — no payment is processed and no card details are collected.
-            </p>
+            <p class="hint">Test mode. No real money moves. For UPI, use <b>success@razorpay</b>. The kitchen sees the order only after Razorpay confirms it.</p>
           </div>
         </div>
 
-        <!-- ---------------------------------------------- summary -->
         <div class="panel summary">
           <div class="panel__head"><b>🧾</b><h3>Order summary</h3></div>
-
           <div class="summary__lines">
             ${Store.items.map(l => `
               <div class="cart-line">
@@ -118,31 +177,41 @@
           </div>
 
           <div class="search" style="margin-bottom:18px">
-            <input id="promo" placeholder="Have a coupon? e.g. CRUST50" aria-label="Coupon code">
-            <button class="btn btn--ghost btn--sm" id="applyPromo">Apply</button>
+            <input id="promo" placeholder="Have a coupon? e.g. CRUST50" value="${escapeHTML(draft.coupon)}" aria-label="Coupon code">
+            <button class="btn btn--ghost btn--sm" id="applyPromo" type="button">Apply</button>
           </div>
-          <p id="promoNote" style="font-size:.8rem;margin:-10px 0 16px;display:none"></p>
+          <p id="promoNote" class="hint" style="display:none"></p>
 
           <div class="totals">
             <div><span>Item total</span><span>${money(b.sub)}</span></div>
-            <div id="discountRow" style="display:none"><span>Coupon discount</span><span class="is-free"></span></div>
+            <div id="discountRow" style="display:${draft.discount ? 'flex' : 'none'}"><span>Coupon discount</span><span class="is-free">− ${money(draft.discount)}</span></div>
             <div><span>Delivery</span><span class="${b.delivery ? '' : 'is-free'}">${b.delivery ? money(b.delivery) : 'FREE'}</span></div>
             <div><span>Packaging</span><span>${money(b.packaging)}</span></div>
             <div><span>Taxes (5%)</span><span>${money(b.tax)}</span></div>
             <div class="grand"><span>To pay</span><span id="grandTotal">${money(b.total)}</span></div>
           </div>
 
-          <button class="btn btn--primary btn--block btn--lg" id="placeOrder">Place order</button>
+          <button class="btn btn--primary btn--block btn--lg" id="placeOrder" type="button">${draft.pay === 'cod' ? `Place pickup order · ${money(b.total)}` : `Pay ${money(b.total)}`}</button>
           <a class="btn btn--ghost btn--block btn--sm" style="margin-top:10px" href="menu.html">Add more items</a>
         </div>`;
 
-      /* Segmented pickers behave like radio groups. */
+      bindCheckout();
+      paintBranches();
+      drawMap();
+    }
+
+    function bindCheckout() {
       $$('.pick-grid').forEach(grid => {
         grid.addEventListener('click', e => {
           const pick = e.target.closest('.pick');
-          if (!pick) return;
+          if (!pick || pick.style.display === 'none') return;
           $$('.pick', grid).forEach(p => p.classList.remove('is-on'));
           pick.classList.add('is-on');
+          const input = $('input', pick);
+          if (!input) return;
+          if (input.name === 'mode') setMode(input.value);
+          if (input.name === 'slot') draft.slot = input.value;
+          if (input.name === 'pay') setPay(input.value);
         });
       });
 
@@ -156,97 +225,319 @@
         });
       });
 
-      /* Coupons are validated against the static OFFERS list — display only. */
+      $('#applyPromo').addEventListener('click', applyPromo);
+      $('#placeOrder').addEventListener('click', placeOrder);
+      const pin = $('#ck-pin');
+      if (pin) pin.addEventListener('change', () => { draft.lat = null; draft.lng = null; refreshBranches(); });
+      const loc = $('#useLocation');
+      if (loc) loc.addEventListener('click', useLocation);
+      const select = $('#ck-branch');
+      if (select) select.addEventListener('change', () => {
+        draft.branchId = select.value;
+        paintBranches();
+        drawMap();
+      });
+    }
+
+    function setMode(mode) {
+      draft.mode = mode;
+      if (mode !== 'pickup') draft.pay = 'razorpay';
+      $('#deliveryFields').style.display = mode === 'delivery' ? '' : 'none';
+      $('#pickupFields').style.display = mode === 'pickup' ? '' : 'none';
+      $('#codPick').style.display = mode === 'pickup' ? '' : 'none';
+      if (mode !== 'pickup') {
+        $$('#payGrid .pick').forEach(p => p.classList.toggle('is-on', p.dataset.pay === 'razorpay'));
+      }
+      applyPromo(false);
+      paintBranches();
+      drawMap();
+      updatePayLabel();
+    }
+
+    function setPay(method) {
+      draft.pay = method;
+      updatePayLabel();
+    }
+
+    function updatePayLabel() {
+      const b = previewBill();
+      const btn = $('#placeOrder');
+      if (!btn) return;
+      btn.textContent = draft.pay === 'cod' ? `Place pickup order · ${money(b.total)}` : `Pay ${money(b.total)}`;
+      $('#grandTotal').textContent = money(b.total);
+      const delivery = b.delivery ? money(b.delivery) : 'FREE';
+      const deliveryCell = $('.totals div:nth-child(3) span:last-child');
+      if (deliveryCell) {
+        deliveryCell.textContent = delivery;
+        deliveryCell.classList.toggle('is-free', !b.delivery);
+      }
+    }
+
+    function applyPromo(showNote = true) {
+      const code = ($('#promo')?.value || draft.coupon).trim().toUpperCase();
+      draft.coupon = code;
+      const note = $('#promoNote');
+      const b = Store.bill;
+      const delivery = draft.mode === 'pickup' || b.sub >= FEES.freeDeliveryOver ? 0 : FEES.delivery;
       let discount = 0;
-      $('#applyPromo').addEventListener('click', () => {
-        const code = $('#promo').value.trim().toUpperCase();
-        const note = $('#promoNote');
-        const hit  = OFFERS.find(o => o.code === code);
-        note.style.display = 'block';
-
-        if (!hit) {
-          discount = 0;
-          note.style.color = 'var(--red)';
-          note.textContent = 'That code is not valid right now.';
-        } else if (code === 'CRUST50') {
-          discount = Math.min(120, Math.round(b.sub * 0.5));
-          note.style.color = 'var(--green)';
-          note.textContent = `CRUST50 applied — you saved ${money(discount)}.`;
-        } else if (code === 'BUCKET99') {
-          discount = b.sub >= 599 ? 99 : 0;
-          note.style.color = discount ? 'var(--green)' : 'var(--red)';
-          note.textContent = discount ? 'BUCKET99 applied — ₹99 off.'
-                                      : 'BUCKET99 needs a minimum order of ₹599.';
-        } else {
-          discount = b.delivery;
-          note.style.color = discount ? 'var(--green)' : 'var(--cream-faint)';
-          note.textContent = discount ? 'Delivery is on us.' : 'Delivery was already free.';
-        }
-
-        const row = $('#discountRow');
+      let message = '';
+      let ok = true;
+      if (!code) {
+        message = '';
+      } else if (code === 'CRUST50') {
+        discount = Math.min(120, Math.round(b.sub * 0.5));
+        message = `CRUST50 applied — you saved ${money(discount)}.`;
+      } else if (code === 'BUCKET99') {
+        discount = b.sub >= 599 ? 99 : 0;
+        ok = !!discount;
+        message = discount ? 'BUCKET99 applied — ₹99 off.' : 'BUCKET99 needs a minimum order of ₹599.';
+      } else if (code === 'FREEDEL') {
+        discount = delivery;
+        ok = !!discount;
+        message = discount ? 'Delivery is on us.' : 'Delivery was already free.';
+      } else {
+        ok = false;
+        message = 'That code is not valid right now.';
+      }
+      draft.discount = discount;
+      if (note && showNote) {
+        note.style.display = message ? 'block' : 'none';
+        note.style.color = ok ? 'var(--green)' : 'var(--red)';
+        note.textContent = message;
+      }
+      const row = $('#discountRow');
+      if (row) {
         row.style.display = discount ? 'flex' : 'none';
         row.querySelector('span:last-child').textContent = '− ' + money(discount);
-        $('#grandTotal').textContent = money(b.total - discount);
-      });
+      }
+      updatePayLabel();
+    }
 
-      $('#placeOrder').addEventListener('click', async () => {
-        const name = $('#ck-name').value.trim();
-        const addr = $('#ck-addr').value.trim();
-        if (!name || !addr) {
-          toast('Add your name and address first', '📝');
-          (!name ? $('#ck-name') : $('#ck-addr')).focus();
+    async function refreshBranches() {
+      const params = new URLSearchParams();
+      if (draft.lat != null) {
+        params.set('lat', draft.lat);
+        params.set('lng', draft.lng);
+      } else if ($('#ck-pin')?.value.trim()) {
+        params.set('pin', $('#ck-pin').value.trim());
+      }
+      const res = await fetch('/api/branches?' + params.toString());
+      const data = await res.json();
+      draft.branches = data.branches;
+      const close = nearest() || draft.branches[0];
+      if (draft.mode === 'pickup' && close && (!draft.branchId || !draft.branches.some(b => b.id === draft.branchId))) {
+        draft.branchId = close.id;
+      }
+      paintBranches();
+      drawMap();
+    }
+
+    function paintBranches() {
+      const select = $('#ck-branch');
+      const box = $('#assigned');
+      const branch = selectedBranch();
+      if (select) {
+        select.innerHTML = draft.branches.map(b => `
+          <option value="${b.id}" ${b.id === draft.branchId ? 'selected' : ''}>
+            ${b.name}${b.distance_km != null ? ` · ${b.distance_km} km` : ''}
+          </option>`).join('');
+        if (draft.branchId) select.value = draft.branchId;
+      }
+      if (!box) return;
+      if (!branch) {
+        box.innerHTML = `<p class="hint">Share your location or enter a Pune PIN and we will assign the closest kitchen.</p>`;
+        return;
+      }
+      const distance = branch.distance_km != null ? `${branch.distance_km} km · ` : '';
+      const note = draft.mode === 'delivery'
+        ? 'This is the kitchen that will cook the order.'
+        : 'You are picking up from this kitchen.';
+      box.innerHTML = `
+        <div class="assigned" style="margin-top:12px">
+          <strong>${escapeHTML(branch.name)}</strong>
+          <span>${distance}${escapeHTML(branch.address)}</span>
+          <span>${note}</span>
+        </div>`;
+    }
+
+    function drawMap() {
+      const host = $('#checkoutMap');
+      if (!host || !window.L || !draft.branches.length) return;
+      if (!map) {
+        map = L.map(host, { scrollWheelZoom: false, zoomControl: false });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 18, attribution: '&copy; OpenStreetMap',
+        }).addTo(map);
+      }
+      Object.values(markers).forEach(m => m.remove());
+      markers = {};
+      const focus = selectedBranch();
+      draft.branches.forEach(b => {
+        const icon = L.divIcon({
+          className: 'map-pin' + (focus && b.id === focus.id ? ' is-near' : ''),
+          html: '<span></span>', iconSize: [16, 16], iconAnchor: [8, 8],
+        });
+        markers[b.id] = L.marker([b.lat, b.lng], { icon }).addTo(map).bindPopup(b.name);
+      });
+      if (customerMarker) customerMarker.remove();
+      if (draft.lat != null) {
+        customerMarker = L.circleMarker([draft.lat, draft.lng], {
+          radius: 7, color: '#fff8ee', weight: 2, fillColor: '#6fd08c', fillOpacity: 1,
+        }).addTo(map);
+      }
+      if (focus) {
+        map.setView([focus.lat, focus.lng], 12);
+        markers[focus.id].openPopup();
+      }
+      setTimeout(() => map.invalidateSize(), 50);
+    }
+
+    function useLocation() {
+      if (!navigator.geolocation) {
+        toast('This browser cannot share location. Enter a Pune PIN.', '📍');
+        return;
+      }
+      const note = $('#locNote');
+      if (note) note.textContent = 'Finding you…';
+      navigator.geolocation.getCurrentPosition(pos => {
+        draft.lat = pos.coords.latitude;
+        draft.lng = pos.coords.longitude;
+        if (note) note.textContent = 'Using your location to pick the closest kitchen.';
+        refreshBranches();
+      }, () => {
+        draft.lat = null;
+        draft.lng = null;
+        if (note) note.textContent = 'Location was blocked. Enter a Pune PIN instead.';
+        toast('Location blocked. Enter a Pune PIN.', '📍');
+      }, { enableHighAccuracy: false, timeout: 8000 });
+    }
+
+    async function showSuccess(order) {
+      Tickets.remember(order.order_id);
+      Store.clear();
+      root.className = 'wrap ticket-wrap';
+      const paint = async () => {
+        const res = await fetch('/api/tickets/' + encodeURIComponent(order.order_id));
+        if (!res.ok) return;
+        const data = await res.json();
+        root.innerHTML = `
+          <p class="eyebrow" style="text-align:center">Your copy</p>
+          <h1 style="text-align:center;font-size:clamp(1.8rem,4vw,2.6rem);margin:8px 0 18px">Ticket issued</h1>
+          ${ticketCard(data.ticket)}
+          <p class="hint" style="text-align:center;margin-top:14px">Saved under Tickets on this browser. The stage updates as the kitchen moves it.</p>
+          <div class="row gap-12" style="justify-content:center;margin-top:18px;flex-wrap:wrap">
+            <a class="btn btn--primary btn--lg" href="tickets.html?ticket=${encodeURIComponent(order.order_id)}">Open my tickets</a>
+            <a class="btn btn--ghost btn--lg" href="menu.html">Order something else</a>
+          </div>`;
+      };
+      await paint();
+      setInterval(paint, 4000);
+      toast('Ticket saved', '🎟️');
+    }
+
+    async function placeOrder() {
+      const name = $('#ck-name').value.trim();
+      const phone = $('#ck-phone').value.trim();
+      const addr = $('#ck-addr')?.value.trim() || '';
+      if (name.length < 2 || phone.replace(/\D/g, '').length < 10) {
+        toast('Add your name and a 10-digit mobile', '📝');
+        return;
+      }
+      if (draft.mode === 'delivery' && addr.length < 8) {
+        toast('Add the delivery address', '📝');
+        $('#ck-addr').focus();
+        return;
+      }
+      if (draft.mode === 'delivery' && draft.lat == null && !($('#ck-pin')?.value || '').trim()) {
+        toast('Share your location or enter a Pune PIN', '📍');
+        return;
+      }
+      const btn = $('#placeOrder');
+      btn.disabled = true;
+      btn.textContent = 'Starting payment…';
+      try {
+        const res = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: draft.mode,
+            payment_method: draft.pay,
+            name,
+            phone,
+            address: addr,
+            city: $('#ck-city')?.value.trim() || 'Pune',
+            pin: $('#ck-pin')?.value.trim() || '',
+            lat: draft.lat,
+            lng: draft.lng,
+            branch_id: draft.mode === 'pickup' ? draft.branchId : null,
+            slot: draft.slot,
+            coupon: draft.coupon,
+            items: Store.items.map(line => ({
+              id: line.id,
+              qty: line.qty,
+              choices: line.choices || {},
+              addons: line.addons || [],
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          toast(data.detail || data.error || 'Could not start the order', '❌');
+          btn.disabled = false;
+          updatePayLabel();
           return;
         }
-        
-        try {
-          const res = await fetch('/api/checkout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name,
-              phone: $('#ck-phone').value.trim(),
-              address: addr,
-              city: $('#ck-city').value.trim(),
-              pin: $('#ck-pin').value.trim(),
-              items: Store.items,
-              total: b.total - discount
-            })
-          });
-          const data = await res.json();
-          if (data.success) {
-            showSuccess(b.total - discount, data.order_id);
-          }
-        } catch (e) {
-          toast('Error placing order', '❌');
+        if (data.payment_method === 'cod') {
+          showSuccess(data);
+          return;
         }
-      });
+        if (!window.Razorpay) {
+          toast('Payment checkout did not load', '❌');
+          btn.disabled = false;
+          updatePayLabel();
+          return;
+        }
+        const rzp = new Razorpay({
+          key: data.key_id,
+          amount: data.amount,
+          currency: data.currency,
+          name: 'Goldcrust',
+          description: data.branch.name + ' · ' + data.order_id,
+          order_id: data.razorpay_order_id,
+          prefill: { name, contact: phone },
+          theme: { color: '#e09020' },
+          handler: async response => {
+            const check = await fetch('/api/payment/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(response),
+            });
+            const paid = await check.json();
+            if (!check.ok || !paid.success) {
+              toast(paid.detail || 'Payment was not confirmed', '❌');
+              btn.disabled = false;
+              updatePayLabel();
+              return;
+            }
+            showSuccess({ ...data, ...paid, payment_method: 'razorpay' });
+          },
+          modal: {
+            ondismiss() {
+              toast('Payment closed. The kitchen has not started this order.', '💳');
+              btn.disabled = false;
+              updatePayLabel();
+            },
+          },
+        });
+        rzp.open();
+      } catch (err) {
+        toast('Could not reach the server', '❌');
+        btn.disabled = false;
+        updatePayLabel();
+      }
     }
 
-    function showSuccess(total, orderNo) {
-      const eta = new Date(Date.now() + 28 * 60000)
-        .toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-      if (!orderNo) orderNo = 'GC' + Math.floor(100000 + Math.random() * 900000);
-
-      Store.clear();
-      root.className = 'wrap';
-      root.innerHTML = `
-        <div class="success">
-          <div class="success__badge">🍗</div>
-          <h1>Order confirmed!</h1>
-          <p>
-            Order <strong>#${orderNo}</strong> is with the kitchen. Your chicken hits
-            the fryer in a minute and should reach you by <strong>${eta}</strong>.
-          </p>
-          <p style="font-size:.9rem">Total paid: <strong style="color:var(--amber-bright)">${money(total)}</strong></p>
-          <div class="row gap-12" style="justify-content:center;margin-top:26px;flex-wrap:wrap">
-            <a class="btn btn--primary btn--lg" href="menu.html">Order something else</a>
-            <a class="btn btn--ghost btn--lg" href="index.html">Back home</a>
-          </div>
-        </div>`;
-      toast('Order placed — hang tight!', '🛵');
-    }
-
-    renderCheckout();
+    refreshBranches().then(renderCheckout);
   </script>
 </body>
 </html>

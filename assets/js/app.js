@@ -10,6 +10,127 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const money = n => '₹' + Math.round(n).toLocaleString('en-IN');
 
+/* Orders the customer placed on this browser. The ticket number is the
+   order id; the copy and its live stage live on the Tickets page. */
+const Tickets = {
+  KEY: 'goldcrust.tickets.v1',
+  ids() {
+    try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch { return []; }
+  },
+  remember(id) {
+    if (!id) return;
+    const ids = [id, ...this.ids().filter(item => item !== id)].slice(0, 20);
+    localStorage.setItem(this.KEY, JSON.stringify(ids));
+  },
+};
+
+function ticketCode(id) {
+  return String(id || '').replace(/^(GC)(\d+)$/, '$1 $2');
+}
+
+function ticketStages(order) {
+  const ready = order.mode === 'pickup' ? 'Ready' : 'On the way';
+  const done = order.mode === 'pickup' ? 'Collected' : 'Delivered';
+  return ['Received', 'Cooking', ready, done];
+}
+
+function ticketIndex(status) {
+  return { confirmed: 0, preparing: 1, ready: 2, completed: 3 }[status] ?? -1;
+}
+
+function ticketNote(order) {
+  const notes = {
+    confirmed: 'The kitchen has your ticket and has not started yet.',
+    preparing: 'Your food is on the fryer.',
+    ready: order.mode === 'pickup'
+      ? 'It is ready. Collect it from the counter.'
+      : 'A rider is on the way to you.',
+    completed: order.mode === 'pickup' ? 'Picked up. Enjoy it hot.' : 'Delivered. Enjoy it hot.',
+  };
+  return notes[order.status] || 'Waiting on the kitchen.';
+}
+
+function ticketCard(order) {
+  const idx = ticketIndex(order.status);
+  const when = order.created_at
+    ? new Date(order.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const pay = order.payment_method === 'cod' ? 'Pay at counter' : 'Paid';
+  const where = order.mode === 'pickup' ? 'Pickup' : 'Delivery';
+  const place = order.mode === 'delivery' && order.address
+    ? order.address
+    : (order.branch && order.branch.address) || '';
+  return `
+    <div class="ticket-block">
+    <article class="ticket">
+      <header class="ticket__head">
+        <span class="ticket__brand">GOLDCRUST</span>
+        <span>${where}</span>
+      </header>
+      <div class="ticket__body">
+        <p class="ticket__kicker">Ticket</p>
+        <p class="ticket__code">${escapeHTML(ticketCode(order.ticket))}</p>
+        <p class="ticket__for">${escapeHTML(order.name || '')}${when ? ` · ${escapeHTML(when)}` : ''}</p>
+        <ol class="stages">
+          ${ticketStages(order).map((label, i) => `
+            <li class="${i < idx ? 'is-done' : ''} ${i === idx ? 'is-now' : ''}">
+              <b></b><span>${label}</span>
+            </li>`).join('')}
+        </ol>
+        <p class="ticket__note">${escapeHTML(ticketNote(order))}</p>
+      </div>
+      <div class="ticket__tear" aria-hidden="true"></div>
+      <div class="ticket__foot">
+        <ul class="ticket__items">
+          ${(order.items || []).map(item => `
+            <li>
+              <span>${item.emoji || ''} ${item.qty} × ${escapeHTML(item.name)}</span>
+              <small>${escapeHTML(item.option_text || '')}</small>
+            </li>`).join('')}
+        </ul>
+        <div class="ticket__row"><span>${escapeHTML(order.branch?.name || '')}</span><span>${pay}</span></div>
+        <div class="ticket__row ticket__place"><span>${escapeHTML(place)}</span></div>
+        <div class="ticket__row ticket__total"><span>Total</span><span>${money(order.total || 0)}</span></div>
+      </div>
+    </article>
+    <button type="button" class="btn btn--ghost btn--sm ticket-download" data-ticket="${escapeHTML(order.ticket)}">Download ticket</button>
+    </div>`;
+}
+
+let ticketCanvasLoader;
+function loadTicketCanvas() {
+  if (window.html2canvas) return Promise.resolve();
+  if (!ticketCanvasLoader) {
+    ticketCanvasLoader = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Ticket image library failed to load'));
+      document.head.append(script);
+    });
+  }
+  return ticketCanvasLoader;
+}
+
+async function downloadTicket(article, code) {
+  await loadTicketCanvas();
+  const canvas = await window.html2canvas(article, {
+    scale: 2,
+    backgroundColor: '#23120a',
+    useCORS: true,
+  });
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('empty');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Goldcrust-${code}.png`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 const escapeHTML = str => String(str).replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
@@ -125,8 +246,8 @@ function mountChrome(page) {
   const nav = [
     ['index.html', 'Home', 'home'],
     ['menu.html', 'Menu', 'menu'],
-    ['index.html#offers', 'Offers', 'offers'],
-    ['index.html#how', 'How it works', 'how'],
+    ['tickets.html', 'Tickets', 'tickets'],
+    ['kitchen.html', 'Kitchen', 'kitchen'],
   ];
 
   $('#chrome').innerHTML = `
@@ -146,7 +267,7 @@ function mountChrome(page) {
 
         <div class="locpill">
           ${ICONS.pin}
-          <span><strong>Deliver to</strong><span>Koregaon Park, Pune</span></span>
+          <span><strong>Pune</strong><span>16 kitchens</span></span>
         </div>
 
         <button class="icon-btn cart-btn" id="openCart" aria-label="Open cart">
@@ -172,7 +293,7 @@ function mountChrome(page) {
       <a href="menu.html" class="${page === 'menu' ? 'is-active' : ''}" aria-label="Menu">${ICONS.grid}</a>
       <a href="index.html#offers" aria-label="Offers">${ICONS.thumb}</a>
       <a href="index.html" class="tabbar__home" aria-label="Home">${ICONS.home}</a>
-      <a href="checkout.html" class="${page === 'checkout' ? 'is-active' : ''}" aria-label="Account">${ICONS.user}</a>
+      <a href="tickets.html" class="${page === 'tickets' ? 'is-active' : ''}" aria-label="Tickets">${ICONS.user}</a>
       <a href="#" aria-label="Support">${ICONS.chat}</a>
     </nav>
   `;
@@ -307,7 +428,9 @@ function openItem(id) {
   modalEl.innerHTML = `
     <div class="modal__panel">
       <button class="modal__close" id="modalClose" aria-label="Close">✕</button>
-      <div class="modal__art">${dish(item.emoji, false, item.accent)}</div>
+      <div class="modal__art">
+        <img class="modal__photo" src="assets/img/${item.id}.jpg" alt="${escapeHTML(item.name)}">
+      </div>
       <div class="modal__body">
         <div class="modal__scroll">
           <div class="row gap-8" style="flex-wrap:wrap">${item.tags.map(tagChip).join('')}</div>
@@ -399,6 +522,8 @@ function openItem(id) {
       key: lineKey(item.id, state),
       id: item.id, name: item.name, emoji: item.emoji,
       unit: unit(), qty: state.qty, optionText: parts.join(' · '),
+      choices: { ...state.choice },
+      addons: [...state.addons],
     });
     closeModal();
     toast(`${item.name} added`, '✅');
@@ -422,6 +547,8 @@ function quickAdd(id) {
     key: item.id + '__default',
     id: item.id, name: item.name, emoji: item.emoji,
     unit: item.price, qty: 1, optionText: 'Regular',
+    choices: {},
+    addons: [],
   });
   toast(`${item.name} added`, '✅');
 }
@@ -482,7 +609,25 @@ function favRow(item) {
 }
 
 /* Card clicks are delegated so re-rendered grids need no re-binding. */
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
+  const save = e.target.closest('.ticket-download');
+  if (save) {
+    const article = save.closest('.ticket-block')?.querySelector('.ticket');
+    if (!article) return;
+    save.disabled = true;
+    const label = save.textContent;
+    save.textContent = 'Saving…';
+    try {
+      await downloadTicket(article, save.dataset.ticket || 'ticket');
+      toast('Ticket downloaded', '🎟️');
+    } catch {
+      toast('Could not download the ticket', '❌');
+    }
+    save.disabled = false;
+    save.textContent = label;
+    return;
+  }
+
   const open = e.target.closest('[data-open]');
   if (open) { openItem(open.dataset.open); return; }
 

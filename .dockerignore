@@ -1,0 +1,12 @@
+venv
+.git
+data
+__pycache__
+*.pyc
+rzp-key.csv
+.env
+.aws-deploy.env
+.claude
+.commandcode
+PLAN.md
+README.md

@@ -1,4 +1,4 @@
-# Goldcrust (Bytebite) 🍗✨
+# Goldcrust 🍗✨
 
 A fast, responsive food delivery web application featuring a clean user interface and a lightweight Python backend. The project includes a static frontend with a fully functional shopping cart and a FastAPI backend to handle the checkout process.
 
@@ -29,8 +29,8 @@ Follow these instructions to get the project up and running on your local machin
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Black-sys-dot/Bytebite.git
-   cd Bytebite
+   git clone https://github.com/Black-sys-dot/Goldcrust.git
+   cd Goldcrust
    ```
 
 2. **Set up a virtual environment (recommended)**
