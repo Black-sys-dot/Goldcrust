@@ -564,3 +564,19 @@ def claim_guest_tickets(user_id: int, ticket_ids: list[str]) -> list[str]:
             conn.close()
 
 
+def ping():
+    """Verify database connection health and return engine type."""
+    conn = _connect()
+    try:
+        cur = conn.execute("SELECT 1 as ping")
+        row = cur.fetchone()
+        is_postgres = bool(DATABASE_URL and DATABASE_URL.startswith("postgres"))
+        return {
+            "status": "healthy" if row else "error",
+            "engine": "postgresql" if is_postgres else "sqlite",
+        }
+    finally:
+        conn.close()
+
+
+
