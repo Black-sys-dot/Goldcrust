@@ -6,6 +6,7 @@ connection string and the same tables are created there.
 
 import os
 import re
+import secrets
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -238,6 +239,20 @@ def customer_ticket(order):
     }
 
 
+TICKET_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def generate_ticket_id(conn) -> str:
+    """Generate a random, non-sequential Crockford base32 ticket identifier."""
+    for _ in range(30):
+        code = "".join(secrets.choice(TICKET_ALPHABET) for _ in range(6))
+        candidate = f"GC{code}"
+        row = conn.execute("SELECT 1 FROM orders WHERE public_id = ?", (candidate,)).fetchone()
+        if not row:
+            return candidate
+    return f"GC{uuid.uuid4().hex[:6].upper()}"
+
+
 def create_order(header, lines):
     with _lock:
         conn = _connect()
@@ -265,7 +280,7 @@ def create_order(header, lines):
                 },
             )
             order_id = cur.fetchone()["id"]
-            public_id = f"GC{100000 + order_id}"
+            public_id = generate_ticket_id(conn)
             conn.execute("UPDATE orders SET public_id = ? WHERE id = ?", (public_id, order_id))
             conn.executemany(
                 """
@@ -302,7 +317,11 @@ def attach_razorpay_order(public_id, razorpay_order_id):
 def get_order(public_id):
     conn = _connect()
     try:
-        row = conn.execute("SELECT * FROM orders WHERE public_id = ?", (public_id,)).fetchone()
+        clean = str(public_id or "").strip().upper().replace(" ", "").replace("#", "").replace("-", "")
+        row = conn.execute(
+            "SELECT * FROM orders WHERE public_id = ? OR REPLACE(public_id, '-', '') = ?",
+            (public_id, clean),
+        ).fetchone()
         return _public(row, conn) if row else None
     finally:
         conn.close()
@@ -463,8 +482,8 @@ def claim_guest_tickets(user_id: int, ticket_ids: list[str]) -> list[str]:
     """
     if not ticket_ids:
         return []
-    clean_ids = [str(t).strip().upper() for t in ticket_ids if t]
-    clean_ids = [t for t in clean_ids if re.match(r"^GC\d+$", t)][:50]
+    clean_ids = [str(t).strip().upper().replace(" ", "").replace("#", "").replace("-", "") for t in ticket_ids if t]
+    clean_ids = [t for t in clean_ids if re.match(r"^GC[A-Z0-9]{4,12}$", t)][:50]
     if not clean_ids:
         return []
 

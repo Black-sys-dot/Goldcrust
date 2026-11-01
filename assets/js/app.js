@@ -25,7 +25,11 @@ const Tickets = {
 };
 
 function ticketCode(id) {
-  return String(id || '').replace(/^(GC)(\d+)$/, '$1 $2');
+  const s = String(id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (s.startsWith('GC') && s.length > 2) {
+    return 'GC ' + s.slice(2);
+  }
+  return String(id || '');
 }
 
 function ticketStages(order) {

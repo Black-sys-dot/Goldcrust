@@ -377,7 +377,7 @@ def all_orders(request: Request):
 
 @app.get("/api/tickets/{ticket_id}")
 def ticket(ticket_id: str):
-    public_id = ticket_id.strip().upper().replace(" ", "").replace("#", "")
+    public_id = ticket_id.strip().upper().replace(" ", "").replace("#", "").replace("-", "")
     order = db.get_order(public_id)
     if not order or order["status"] in ("pending_payment", "failed"):
         raise HTTPException(404, "No ticket with that number.")
