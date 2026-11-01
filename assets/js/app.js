@@ -238,6 +238,60 @@ function toast(msg, emoji = '🛒') {
   setTimeout(() => { el.classList.add('is-out'); setTimeout(() => el.remove(), 320); }, 2200);
 }
 
+/* ---------------------------------------------------------------- auth ----- */
+const Auth = {
+  user: null,
+  listeners: [],
+  onChange(fn) { this.listeners.push(fn); fn(this.user); },
+  notify() { this.listeners.forEach(fn => fn(this.user)); },
+
+  async check() {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      this.user = data.logged_in ? data.user : null;
+    } catch {
+      this.user = null;
+    }
+    this.notify();
+    return this.user;
+  },
+
+  async login(username, password) {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Login failed');
+    this.user = data.user;
+    this.notify();
+    return data.user;
+  },
+
+  async register(username, password) {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Registration failed');
+    this.user = data.user;
+    this.notify();
+    return data.user;
+  },
+
+  async logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    this.user = null;
+    this.notify();
+  },
+};
+
 /* ----------------------------------------------------------- chrome -------
    Top bar, cart drawer and mobile tab bar are injected on every page so the
    markup stays in one place.
@@ -270,6 +324,8 @@ function mountChrome(page) {
           <span><strong>Pune</strong><span>16 kitchens</span></span>
         </div>
 
+        <div id="authSlot" class="auth-slot"></div>
+
         <button class="icon-btn cart-btn" id="openCart" aria-label="Open cart">
           ${ICONS.bag}
           <span class="cart-btn__count" id="cartCount">0</span>
@@ -296,6 +352,31 @@ function mountChrome(page) {
       <a href="tickets.html" class="${page === 'tickets' ? 'is-active' : ''}" aria-label="Tickets">${ICONS.user}</a>
       <a href="#" aria-label="Support">${ICONS.chat}</a>
     </nav>
+
+    <div class="modal" id="authModal">
+      <div class="modal__panel auth-modal__panel">
+        <button class="icon-btn modal__close" id="closeAuth" aria-label="Close" type="button">✕</button>
+        <div class="auth-box">
+          <div class="auth-tabs">
+            <button type="button" class="auth-tab is-active" id="tabLogin">Sign In</button>
+            <button type="button" class="auth-tab" id="tabRegister">Create Account</button>
+          </div>
+          <form id="authForm" class="auth-form">
+            <p class="hint" id="authHint">Sign in to save your orders and view all tickets across devices.</p>
+            <div class="field">
+              <label for="authUsername">Username</label>
+              <input id="authUsername" type="text" placeholder="e.g. crunchy_fan" required autocomplete="username">
+            </div>
+            <div class="field">
+              <label for="authPassword">Password</label>
+              <input id="authPassword" type="password" placeholder="At least 6 characters" required autocomplete="current-password">
+            </div>
+            <p class="auth-error" id="authError" style="display:none"></p>
+            <button type="submit" class="btn btn--primary btn--block btn--lg" id="authSubmit">Sign In</button>
+          </form>
+        </div>
+      </div>
+    </div>
   `;
 
   const overlay = $('#overlay'), drawer = $('#drawer');
@@ -304,9 +385,97 @@ function mountChrome(page) {
 
   $('#openCart').addEventListener('click', openCart);
   $('#closeCart').addEventListener('click', closeCart);
-  overlay.addEventListener('click', () => { closeCart(); closeModal(); });
+  overlay.addEventListener('click', () => { closeCart(); closeModal(); closeAuth(); });
+
+  const authSlot = $('#authSlot');
+  const authModal = $('#authModal');
+  const authForm = $('#authForm');
+  const tabLogin = $('#tabLogin');
+  const tabRegister = $('#tabRegister');
+  const authHint = $('#authHint');
+  const authSubmit = $('#authSubmit');
+  const authError = $('#authError');
+  let authMode = 'login';
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    authError.style.display = 'none';
+    if (mode === 'login') {
+      tabLogin.classList.add('is-active');
+      tabRegister.classList.remove('is-active');
+      authHint.textContent = 'Sign in to save your orders and track tickets across devices.';
+      authSubmit.textContent = 'Sign In';
+      $('#authPassword').autocomplete = 'current-password';
+    } else {
+      tabRegister.classList.add('is-active');
+      tabLogin.classList.remove('is-active');
+      authHint.textContent = 'Create a quick account so all your Goldcrust tickets stay saved.';
+      authSubmit.textContent = 'Create Account';
+      $('#authPassword').autocomplete = 'new-password';
+    }
+  }
+
+  window.openAuth = (mode = 'login') => {
+    setAuthMode(mode);
+    authModal.classList.add('is-open');
+    $('#authUsername').focus();
+  };
+
+  const closeAuth = () => {
+    authModal.classList.remove('is-open');
+    authError.style.display = 'none';
+  };
+
+  $('#closeAuth').addEventListener('click', closeAuth);
+  authModal.addEventListener('click', e => {
+    if (e.target === authModal) closeAuth();
+  });
+  tabLogin.addEventListener('click', () => setAuthMode('login'));
+  tabRegister.addEventListener('click', () => setAuthMode('register'));
+
+  authForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const username = $('#authUsername').value.trim();
+    const password = $('#authPassword').value;
+    authError.style.display = 'none';
+    authSubmit.disabled = true;
+    try {
+      if (authMode === 'login') {
+        await Auth.login(username, password);
+      } else {
+        await Auth.register(username, password);
+      }
+      closeAuth();
+      authForm.reset();
+    } catch (err) {
+      authError.textContent = err.message;
+      authError.style.display = 'block';
+    } finally {
+      authSubmit.disabled = false;
+    }
+  });
+
+  function renderAuth(user) {
+    if (!authSlot) return;
+    if (user) {
+      authSlot.innerHTML = `
+        <div class="user-pill">
+          <span class="user-name">👤 ${escapeHTML(user.username)}</span>
+          <button type="button" class="btn-text" id="doLogout">Logout</button>
+        </div>`;
+      $('#doLogout')?.addEventListener('click', () => Auth.logout());
+    } else {
+      authSlot.innerHTML = `
+        <button type="button" class="btn btn--ghost btn--sm auth-btn" id="openAuthBtn">Sign in</button>`;
+      $('#openAuthBtn')?.addEventListener('click', () => window.openAuth('login'));
+    }
+  }
+
+  Auth.onChange(renderAuth);
+  Auth.check();
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeCart(); closeModal(); }
+    if (e.key === 'Escape') { closeCart(); closeModal(); closeAuth(); }
   });
 
   window.openCart = openCart;

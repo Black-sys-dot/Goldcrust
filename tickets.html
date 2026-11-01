@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tickets — GOLDCRUST</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
-  <link rel="stylesheet" href="assets/css/styles.css?v=7">
+  <link rel="stylesheet" href="assets/css/styles.css?v=8">
 </head>
 <body>
   <div id="chrome"></div>
@@ -14,7 +14,7 @@
     <div class="wrap">
       <p class="eyebrow">Your copies</p>
       <h1 style="font-size:clamp(1.9rem,4vw,2.7rem);margin:12px 0 8px">Tickets</h1>
-      <p class="hint">Each paid order keeps a ticket here. The stage follows the kitchen.</p>
+      <p class="hint" id="ticketSubtitle">Each paid order keeps a ticket here. The stage follows the kitchen.</p>
       <form class="search" id="lookup" style="max-width:460px;margin-top:16px">
         <input id="ticketCode" placeholder="Ticket number, e.g. GC100003" aria-label="Ticket number" autocomplete="off">
         <button class="btn btn--primary btn--sm" type="submit">Find</button>
@@ -28,7 +28,7 @@
   </section>
 
   <script src="assets/js/data.js"></script>
-  <script src="assets/js/app.js?v=5"></script>
+  <script src="assets/js/app.js?v=6"></script>
   <script>
     mountChrome('tickets');
 
@@ -45,28 +45,61 @@
     }
 
     async function paint() {
+      const user = Auth.user;
+      const subtitle = $('#ticketSubtitle');
+
+      if (user) {
+        if (subtitle) subtitle.textContent = `Signed in as ${user.username}. Here are all tickets saved to your account:`;
+        try {
+          const res = await fetch('/api/user/tickets');
+          if (res.ok) {
+            const data = await res.json();
+            const tickets = data.tickets || [];
+            if (!tickets.length) {
+              list.innerHTML = `
+                <div class="empty" style="padding:64px 16px">
+                  <i>🎟️</i>
+                  <h4>No tickets in your account yet</h4>
+                  <p>Orders you place while signed in will automatically show up here.</p>
+                  <a class="btn btn--primary" style="margin-top:16px" href="menu.html">Browse the menu</a>
+                </div>`;
+              return;
+            }
+            list.innerHTML = tickets.map(ticket => `
+              <div class="${ticket.ticket === highlighted ? 'is-focus' : ''}">
+                ${ticketCard(ticket)}
+              </div>`).join('');
+            return;
+          }
+        } catch {}
+      }
+
+      // Guest mode
+      if (subtitle) subtitle.textContent = 'Each paid order keeps a ticket here. The stage follows the kitchen.';
       const ids = Tickets.ids();
-      if (!ids.length) {
-        list.innerHTML = `
-          <div class="empty" style="padding:64px 16px">
+      const guestTickets = (await Promise.all(ids.map(loadTicket))).filter(Boolean);
+
+      const banner = `
+        <div class="guest-banner">
+          <div>
+            <strong>Viewing as Guest</strong>
+            <p>Sign in or create an account to permanently sync all your tickets across your phone and laptop.</p>
+          </div>
+          <button type="button" class="btn btn--primary btn--sm" onclick="window.openAuth('login')">Sign in / Register</button>
+        </div>`;
+
+      if (!guestTickets.length) {
+        list.innerHTML = banner + `
+          <div class="empty" style="padding:48px 16px">
             <i>🎟️</i>
-            <h4>No tickets yet</h4>
-            <p>Pay for an order and the ticket lands here, with its stage.</p>
+            <h4>No guest tickets saved in this browser</h4>
+            <p>Pay for an order or enter your ticket number above to find it.</p>
             <a class="btn btn--primary" style="margin-top:16px" href="menu.html">Browse the menu</a>
           </div>`;
         return;
       }
-      const tickets = (await Promise.all(ids.map(loadTicket))).filter(Boolean);
-      if (!tickets.length) {
-        list.innerHTML = `
-          <div class="empty" style="padding:64px 16px">
-            <i>🎟️</i>
-            <h4>Those tickets are not active</h4>
-            <p>A ticket appears after the kitchen has the order.</p>
-          </div>`;
-        return;
-      }
-      list.innerHTML = tickets.map(ticket => `
+
+      list.innerHTML = banner + guestTickets.map(ticket => `
         <div class="${ticket.ticket === highlighted ? 'is-focus' : ''}">
           ${ticketCard(ticket)}
         </div>`).join('');
@@ -92,8 +125,9 @@
       paint();
     });
 
+    Auth.onChange(() => paint());
     paint();
-    setInterval(paint, 4000);
+    setInterval(paint, 5000);
   </script>
 </body>
 </html>

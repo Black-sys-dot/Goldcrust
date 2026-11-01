@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import auth
 import db
 import pay
 from catalog import BRANCH_BY_ID, PricingError, branches_with_distance, point_from_pin, quote
@@ -135,9 +136,13 @@ async def checkout(request: Request):
     except PricingError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    current_user = auth.get_current_user(request)
+    user_id = current_user["id"] if current_user else None
+
     status = "confirmed" if method == "cod" else "pending_payment"
     order = db.create_order(
         {
+            "user_id": user_id,
             "status": status,
             "mode": mode,
             "payment_method": method,
@@ -262,6 +267,89 @@ async def razorpay_webhook(request: Request):
     if err:
         raise HTTPException(400, err)
     return {"ok": True, "order_id": confirmed["public_id"], "status": confirmed["status"]}
+
+
+@app.post("/api/auth/register")
+async def register(request: Request):
+    payload = await request.json()
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "").strip()
+
+    if len(username) < 3 or len(username) > 30:
+        raise HTTPException(400, "Username must be between 3 and 30 characters.")
+    if not username.replace("_", "").isalnum():
+        raise HTTPException(400, "Username can only contain letters, numbers, and underscores.")
+    if len(password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters.")
+
+    existing = db.get_user_by_username(username)
+    if existing:
+        raise HTTPException(400, "That username is already taken. Please choose another.")
+
+    pw_hash = auth.hash_password(password)
+    user = db.create_user(username, pw_hash)
+    token = auth.create_session_token(user["id"], user["username"])
+
+    response = JSONResponse({"success": True, "user": {"id": user["id"], "username": user["username"]}})
+    response.set_cookie(
+        key=auth.SESSION_COOKIE,
+        value=token,
+        max_age=auth.SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.post("/api/auth/login")
+async def login(request: Request):
+    payload = await request.json()
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "").strip()
+
+    if not username or not password:
+        raise HTTPException(400, "Enter both username and password.")
+
+    user = db.get_user_by_username(username)
+    if not user or not auth.verify_password(password, user["password_hash"]):
+        raise HTTPException(400, "Invalid username or password.")
+
+    token = auth.create_session_token(user["id"], user["username"])
+    response = JSONResponse({"success": True, "user": {"id": user["id"], "username": user["username"]}})
+    response.set_cookie(
+        key=auth.SESSION_COOKIE,
+        value=token,
+        max_age=auth.SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+def logout():
+    response = JSONResponse({"success": True})
+    response.delete_cookie(key=auth.SESSION_COOKIE, path="/")
+    return response
+
+
+@app.get("/api/auth/me")
+def me(request: Request):
+    current = auth.get_current_user(request)
+    if not current:
+        return {"logged_in": False, "user": None}
+    return {"logged_in": True, "user": current}
+
+
+@app.get("/api/user/tickets")
+def my_tickets(request: Request):
+    current = auth.get_current_user(request)
+    if not current:
+        raise HTTPException(401, "Please log in to view your saved tickets.")
+    tickets = db.user_tickets(current["id"])
+    return {"tickets": tickets}
 
 
 @app.get("/api/orders")

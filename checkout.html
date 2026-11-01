@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Checkout — GOLDCRUST</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍗</text></svg>">
-  <link rel="stylesheet" href="assets/css/styles.css?v=7">
+  <link rel="stylesheet" href="assets/css/styles.css?v=8">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -25,7 +25,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script src="assets/js/data.js"></script>
-  <script src="assets/js/app.js?v=5"></script>
+  <script src="assets/js/app.js?v=6"></script>
   <script>
     mountChrome('checkout');
 
@@ -85,11 +85,23 @@
       }
 
       const b = previewBill();
+      if (Auth.user && !draft.name) draft.name = Auth.user.username;
+      const userBanner = Auth.user
+        ? `<div class="hint" style="margin:0 0 14px;color:var(--amber-bright);font-size:.88rem;font-weight:700">✓ Signed in as <b>${escapeHTML(Auth.user.username)}</b> — order will be linked to your account.</div>`
+        : `<div class="checkout-login-banner" style="margin-bottom:16px">
+             <div>
+               <strong>Ordering as a guest</strong>
+               <p>Sign in or create an account so this order is permanently saved to your tickets.</p>
+             </div>
+             <button type="button" class="btn btn--primary btn--sm" onclick="window.openAuth('login')">Sign in</button>
+           </div>`;
+
       root.className = 'wrap checkout';
       root.innerHTML = `
         <div>
           <div class="panel">
             <div class="panel__head"><b>1</b><h3>Your details</h3></div>
+            ${userBanner}
             <div class="field-row">
               <div class="field"><label for="ck-name">Full name</label>
                 <input id="ck-name" placeholder="Your name" autocomplete="name" value="${escapeHTML(draft.name || '')}"></div>
@@ -536,6 +548,14 @@
         updatePayLabel();
       }
     }
+
+    Auth.onChange(() => {
+      if (Store.items.length) {
+        captureFields();
+        if (Auth.user && !draft.name) draft.name = Auth.user.username;
+        renderCheckout();
+      }
+    });
 
     refreshBranches().then(renderCheckout);
   </script>
