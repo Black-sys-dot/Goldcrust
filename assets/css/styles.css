@@ -1057,3 +1057,20 @@ ul { margin: 0; padding: 0; list-style: none; }
   .guest-banner, .checkout-login-banner { flex-direction: column; align-items: flex-start; }
 }
 
+/* Accessibility & UI Polish */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media print {
+  #chrome, .mobile-tabs, .btn, .search, .cat-bar { display: none !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .panel, .ticket { box-shadow: none !important; border: 1px solid #ccc !important; }
+}
+
+
