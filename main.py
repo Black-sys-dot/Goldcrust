@@ -367,8 +367,12 @@ async def sync_guest_tickets(request: Request):
 
 
 @app.get("/api/orders")
-def all_orders():
+def all_orders(request: Request):
+    current = auth.get_current_user(request)
+    if not current:
+        raise HTTPException(401, "Authentication required to view system orders.")
     return {"orders": db.list_orders()}
+
 
 
 @app.get("/api/tickets/{ticket_id}")

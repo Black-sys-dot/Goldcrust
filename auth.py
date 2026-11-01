@@ -20,8 +20,12 @@ except ImportError:
 # Secret used to sign HMAC session cookies
 SECRET = os.environ.get("AUTH_SECRET")
 if not SECRET:
-    # Use DB_PASSWORD as an anchor if available, otherwise a persistent token file
-    SECRET = os.environ.get("DB_PASSWORD", "goldcrust-secret-key-salt-change-in-prod-2026")
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+    if db_url:
+        SECRET = hashlib.sha256(f"goldcrust-session-salt-{db_url}".encode("utf-8")).hexdigest()
+    else:
+        SECRET = os.environ.get("DB_PASSWORD", "goldcrust-secret-key-salt-change-in-prod-2026")
+
 
 SESSION_COOKIE = "gc_session"
 SESSION_MAX_AGE = 30 * 24 * 3600  # 30 days
