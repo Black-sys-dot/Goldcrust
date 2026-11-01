@@ -340,7 +340,28 @@ def me(request: Request):
     current = auth.get_current_user(request)
     if not current:
         return {"logged_in": False, "user": None}
-    return {"logged_in": True, "user": current}
+    full = db.get_user_by_id(current["id"])
+    if not full:
+        return {"logged_in": False, "user": None}
+    return {
+        "logged_in": True,
+        "user": {
+            "id": full["id"],
+            "username": full["username"],
+            "saved_info": full.get("saved_info") or {},
+        },
+    }
+
+
+@app.post("/api/user/saved-info")
+async def save_user_info(request: Request):
+    current = auth.get_current_user(request)
+    if not current:
+        raise HTTPException(401, "Please log in to save your details.")
+    payload = await request.json()
+    saved = db.update_user_saved_info(current["id"], payload)
+    return {"success": True, "saved_info": saved}
+
 
 
 @app.get("/api/user/tickets")

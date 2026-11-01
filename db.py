@@ -95,7 +95,12 @@ def init():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    default_name TEXT,
+                    default_phone TEXT,
+                    default_address TEXT,
+                    default_city TEXT,
+                    default_pin TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS branches (
@@ -160,10 +165,19 @@ def init():
             # Ensure user_id exists if the orders table was already created
             if DATABASE_URL:
                 conn.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id)")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_name TEXT")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_phone TEXT")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address TEXT")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_city TEXT")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS default_pin TEXT")
             else:
                 cols = [r["name"] for r in conn.execute("PRAGMA table_info(orders)").fetchall()]
                 if "user_id" not in cols:
                     conn.execute("ALTER TABLE orders ADD COLUMN user_id INTEGER REFERENCES users(id)")
+                u_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+                for col in ("default_name", "default_phone", "default_address", "default_city", "default_pin"):
+                    if col not in u_cols:
+                        conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
             for branch in BRANCHES:
                 conn.execute(
                     """
@@ -450,12 +464,56 @@ def get_user_by_id(user_id: int):
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT id, username, created_at FROM users WHERE id = ?",
+            """
+            SELECT id, username, created_at,
+                   default_name, default_phone, default_address, default_city, default_pin
+            FROM users WHERE id = ?
+            """,
             (user_id,),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        d = dict(row)
+        d["saved_info"] = {
+            "name": d.pop("default_name", None) or "",
+            "phone": d.pop("default_phone", None) or "",
+            "address": d.pop("default_address", None) or "",
+            "city": d.pop("default_city", None) or "",
+            "pin": d.pop("default_pin", None) or "",
+        }
+        return d
     finally:
         conn.close()
+
+
+def update_user_saved_info(user_id: int, info: dict):
+    with _lock:
+        conn = _connect()
+        try:
+            name = str(info.get("name") or "").strip()[:80]
+            phone = "".join(ch for ch in str(info.get("phone") or "") if ch.isdigit())[:15]
+            address = str(info.get("address") or "").strip()[:240]
+            city = str(info.get("city") or "").strip()[:40]
+            pin = "".join(ch for ch in str(info.get("pin") or "") if ch.isdigit())[:6]
+
+            conn.execute(
+                """
+                UPDATE users
+                SET default_name = ?, default_phone = ?, default_address = ?, default_city = ?, default_pin = ?
+                WHERE id = ?
+                """,
+                (name, phone, address, city, pin, user_id),
+            )
+            conn.commit()
+            return {
+                "name": name,
+                "phone": phone,
+                "address": address,
+                "city": city,
+                "pin": pin,
+            }
+        finally:
+            conn.close()
 
 
 def user_tickets(user_id: int):

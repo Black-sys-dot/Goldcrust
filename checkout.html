@@ -42,6 +42,63 @@
       branches: [],
     };
     let map, markers = {}, customerMarker;
+    let prefilledFromUser = false;
+
+    function applySavedUserInfo() {
+      if (!Auth.user) return;
+      const s = Auth.user.saved_info || {};
+      if (s.name && !draft.name) draft.name = s.name;
+      if (s.phone && !draft.phone) draft.phone = s.phone;
+      if (s.address && !draft.address) draft.address = s.address;
+      if (s.city && !draft.city) draft.city = s.city;
+      if (s.pin && !draft.pin) draft.pin = s.pin;
+      if (s.name || s.phone || s.address) prefilledFromUser = true;
+    }
+
+    async function saveCurrentInfo() {
+      if (!Auth.user) {
+        window.openAuth('login');
+        return;
+      }
+      captureFields();
+      const name = (draft.name || '').trim();
+      const phone = (draft.phone || '').trim();
+      const address = (draft.address || '').trim();
+      const city = (draft.city || 'Pune').trim();
+      const pin = (draft.pin || '').trim();
+
+      if (!name && !phone && !address) {
+        toast('Please enter your name, phone, or address first.', '⚠️');
+        return;
+      }
+
+      const btns = [$('#btnSaveInfo'), $('#btnSaveInfoTop')].filter(Boolean);
+      btns.forEach(b => { b.disabled = true; b.textContent = 'Saving...'; });
+
+      try {
+        const res = await fetch('/api/user/saved-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone, address, city, pin }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Could not save info');
+
+        if (Auth.user) {
+          Auth.user.saved_info = data.saved_info;
+        }
+        const status = $('#saveInfoStatus');
+        if (status) {
+          status.style.color = '#2ecc71';
+          status.textContent = '✓ Updated! Your details are saved for future checkouts.';
+        }
+        toast('Details saved to your account!', '💾');
+      } catch (err) {
+        toast(err.message || 'Error saving details', '⚠️');
+      } finally {
+        btns.forEach(b => { b.disabled = false; b.textContent = 'Save info'; });
+      }
+    }
 
     function previewBill() {
       const sub = Store.subtotal;
@@ -84,8 +141,12 @@
         return;
       }
 
+      applySavedUserInfo();
       const b = previewBill();
-      if (Auth.user && !draft.name) draft.name = Auth.user.username;
+      if (Auth.user && !draft.name) draft.name = Auth.user.saved_info?.name || Auth.user.username;
+      const saved = Auth.user?.saved_info || {};
+      const hasSavedInfo = Boolean(saved.name || saved.phone || saved.address);
+
       const userBanner = Auth.user
         ? `<div class="hint" style="margin:0 0 14px;color:var(--amber-bright);font-size:.88rem;font-weight:700">✓ Signed in as <b>${escapeHTML(Auth.user.username)}</b> — order will be linked to your account.</div>`
         : `<div class="checkout-login-banner" style="margin-bottom:16px">
@@ -100,7 +161,14 @@
       root.innerHTML = `
         <div>
           <div class="panel">
-            <div class="panel__head"><b>1</b><h3>Your details</h3></div>
+            <div class="panel__head" style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:10px"><b>1</b><h3>Your details</h3></div>
+              ${Auth.user ? `
+                <button type="button" class="btn btn--ghost btn--sm" id="btnSaveInfoTop" title="Save details to your account" style="font-size:.78rem;padding:6px 14px">
+                  💾 Save info
+                </button>
+              ` : ''}
+            </div>
             ${userBanner}
             <div class="field-row">
               <div class="field"><label for="ck-name">Full name</label>
@@ -132,6 +200,18 @@
               </div>
               <button class="btn btn--ghost btn--sm" type="button" id="useLocation">Use my location</button>
               <p class="hint" id="locNote">We pick the closest Pune kitchen. You cannot change it on delivery.</p>
+
+              ${Auth.user ? `
+                <div class="saved-info-card" style="margin-top:16px;padding:12px 14px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                  <div style="font-size:0.86rem;color:var(--cream)">
+                    <strong style="color:var(--amber-bright);display:block">💾 Saved delivery info</strong>
+                    <span id="saveInfoStatus">${hasSavedInfo ? 'Loaded saved info. Edit any field and click Save info to update.' : 'Save your name, phone & address to auto-fill future orders.'}</span>
+                  </div>
+                  <button type="button" class="btn btn--primary btn--sm" id="btnSaveInfo">
+                    Save info
+                  </button>
+                </div>
+              ` : ''}
             </div>
 
             <div id="pickupFields" style="margin-top:18px;${draft.mode === 'pickup' ? '' : 'display:none'}">
@@ -239,6 +319,10 @@
 
       $('#applyPromo').addEventListener('click', applyPromo);
       $('#placeOrder').addEventListener('click', placeOrder);
+      const btnSave = $('#btnSaveInfo');
+      if (btnSave) btnSave.addEventListener('click', saveCurrentInfo);
+      const btnSaveTop = $('#btnSaveInfoTop');
+      if (btnSaveTop) btnSaveTop.addEventListener('click', saveCurrentInfo);
       const pin = $('#ck-pin');
       if (pin) pin.addEventListener('change', () => { draft.lat = null; draft.lng = null; refreshBranches(); });
       const loc = $('#useLocation');
@@ -550,14 +634,18 @@
     }
 
     Auth.onChange(() => {
+      applySavedUserInfo();
       if (Store.items.length) {
         captureFields();
-        if (Auth.user && !draft.name) draft.name = Auth.user.username;
+        if (Auth.user && !draft.name) draft.name = Auth.user.saved_info?.name || Auth.user.username;
         renderCheckout();
       }
     });
 
-    refreshBranches().then(renderCheckout);
+    refreshBranches().then(() => {
+      applySavedUserInfo();
+      renderCheckout();
+    });
   </script>
 </body>
 </html>
