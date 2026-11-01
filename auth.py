@@ -11,7 +11,11 @@ import os
 import secrets
 import time
 from typing import Optional
-from fastapi import Request
+try:
+    from fastapi import Request
+except ImportError:
+    Request = None
+
 
 # Secret used to sign HMAC session cookies
 SECRET = os.environ.get("AUTH_SECRET")

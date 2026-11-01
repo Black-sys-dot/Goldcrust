@@ -352,6 +352,20 @@ def my_tickets(request: Request):
     return {"tickets": tickets}
 
 
+@app.post("/api/user/sync-tickets")
+async def sync_guest_tickets(request: Request):
+    current = auth.get_current_user(request)
+    if not current:
+        raise HTTPException(401, "Please log in to sync tickets.")
+    payload = await request.json()
+    ticket_ids = payload.get("ticket_ids") or []
+    if not isinstance(ticket_ids, list):
+        raise HTTPException(400, "ticket_ids must be a list.")
+    claimed = db.claim_guest_tickets(current["id"], ticket_ids)
+    return {"success": True, "claimed": claimed}
+
+
+
 @app.get("/api/orders")
 def all_orders():
     return {"orders": db.list_orders()}

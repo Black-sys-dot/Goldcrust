@@ -28,7 +28,7 @@
   </section>
 
   <script src="assets/js/data.js"></script>
-  <script src="assets/js/app.js?v=6"></script>
+  <script src="assets/js/app.js?v=7"></script>
   <script>
     mountChrome('tickets');
 
@@ -36,6 +36,20 @@
     const params = new URLSearchParams(location.search);
     const highlighted = (params.get('ticket') || '').replace(/\s|#/g, '').toUpperCase();
     if (highlighted) Tickets.remember(highlighted);
+
+    let newlyLinkedBanner = '';
+
+    window.clearForeignTickets = () => {
+      // Keep only current user's tickets in localStorage
+      const userTickets = $$('.ticket', list).map(el => {
+        const code = $('.ticket__code', el);
+        return code ? code.textContent.replace(/\s+/g, '') : null;
+      }).filter(Boolean);
+      const userSet = new Set(userTickets);
+      const kept = Tickets.ids().filter(id => userSet.has(id));
+      localStorage.setItem(Tickets.KEY, JSON.stringify(kept));
+      paint();
+    };
 
     async function loadTicket(id) {
       const res = await fetch('/api/tickets/' + encodeURIComponent(id));
@@ -50,31 +64,67 @@
 
       if (user) {
         if (subtitle) subtitle.textContent = `Signed in as ${user.username}. Here are all tickets saved to your account:`;
+
+        // Check if there are unassigned guest tickets in localStorage to claim
+        const localIds = Tickets.ids();
+        if (localIds.length > 0) {
+          const claimed = await Auth.syncGuestTickets();
+          if (claimed && claimed.length > 0) {
+            newlyLinkedBanner = `
+              <div class="guest-banner" style="background: rgba(39, 174, 96, 0.15); border: 1px solid rgba(39, 174, 96, 0.4); margin-bottom: 20px;">
+                <div>
+                  <strong style="color: #2ecc71;">✨ Linked ${claimed.length} guest order${claimed.length > 1 ? 's' : ''} to your account!</strong>
+                  <p>Ticket${claimed.length > 1 ? 's' : ''} <strong>${claimed.join(', ')}</strong> found in this browser ${claimed.length > 1 ? 'are' : 'is'} now permanently saved to <strong>${escapeHTML(user.username)}</strong>.</p>
+                </div>
+                <button type="button" class="btn btn--ghost btn--sm" onclick="this.closest('.guest-banner').remove()">Dismiss</button>
+              </div>`;
+          }
+        }
+
         try {
           const res = await fetch('/api/user/tickets');
           if (res.ok) {
             const data = await res.json();
             const tickets = data.tickets || [];
+
+            // Detect any leftover tickets in localStorage not in this account
+            const accountCodes = new Set(tickets.map(t => t.ticket));
+            const otherLocal = Tickets.ids().filter(id => !accountCodes.has(id));
+
+            let otherNotice = '';
+            if (otherLocal.length > 0) {
+              otherNotice = `
+                <div class="guest-banner" style="background: rgba(243, 156, 18, 0.12); border: 1px solid rgba(243, 156, 18, 0.35); margin-top: 24px;">
+                  <div>
+                    <strong style="color: #f39c12;">ℹ️ ${otherLocal.length} ticket${otherLocal.length > 1 ? 's' : ''} in browser storage belong to another session</strong>
+                    <p>Ticket${otherLocal.length > 1 ? 's' : ''}: <strong>${escapeHTML(otherLocal.join(', '))}</strong> (ordered under a different account or session).</p>
+                  </div>
+                  <button type="button" class="btn btn--ghost btn--sm" onclick="window.clearForeignTickets()">Clear from browser</button>
+                </div>`;
+            }
+
             if (!tickets.length) {
-              list.innerHTML = `
+              list.innerHTML = (newlyLinkedBanner || '') + `
                 <div class="empty" style="padding:64px 16px">
                   <i>🎟️</i>
                   <h4>No tickets in your account yet</h4>
                   <p>Orders you place while signed in will automatically show up here.</p>
                   <a class="btn btn--primary" style="margin-top:16px" href="menu.html">Browse the menu</a>
-                </div>`;
+                </div>` + otherNotice;
               return;
             }
-            list.innerHTML = tickets.map(ticket => `
+
+            list.innerHTML = (newlyLinkedBanner || '') + tickets.map(ticket => `
               <div class="${ticket.ticket === highlighted ? 'is-focus' : ''}">
                 ${ticketCard(ticket)}
-              </div>`).join('');
+              </div>`).join('') + otherNotice;
             return;
           }
         } catch {}
       }
 
       // Guest mode
+      newlyLinkedBanner = '';
       if (subtitle) subtitle.textContent = 'Each paid order keeps a ticket here. The stage follows the kitchen.';
       const ids = Tickets.ids();
       const guestTickets = (await Promise.all(ids.map(loadTicket))).filter(Boolean);
@@ -118,6 +168,9 @@
         return;
       }
       Tickets.remember(ticket.ticket);
+      if (Auth.user) {
+        await Auth.syncGuestTickets();
+      }
       note.style.color = 'var(--green)';
       note.textContent = 'Added to your tickets.';
       $('#ticketCode').value = '';

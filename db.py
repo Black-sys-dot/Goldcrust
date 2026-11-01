@@ -454,3 +454,36 @@ def user_tickets(user_id: int):
     finally:
         conn.close()
 
+
+def claim_guest_tickets(user_id: int, ticket_ids: list[str]) -> list[str]:
+    """Link any unassigned (guest) tickets to the logged-in user.
+
+    Only orders where user_id IS NULL are claimed. Orders already claimed
+    or belonging to other accounts are never transferred.
+    """
+    if not ticket_ids:
+        return []
+    clean_ids = [str(t).strip().upper() for t in ticket_ids if t]
+    clean_ids = [t for t in clean_ids if re.match(r"^GC\d+$", t)][:50]
+    if not clean_ids:
+        return []
+
+    with _lock:
+        conn = _connect()
+        try:
+            placeholders = ",".join("?" for _ in clean_ids)
+            query = f"SELECT public_id FROM orders WHERE public_id IN ({placeholders}) AND user_id IS NULL"
+            rows = conn.execute(query, clean_ids).fetchall()
+            claimed = [r["public_id"] for r in rows]
+            if claimed:
+                claim_placeholders = ",".join("?" for _ in claimed)
+                update_query = (
+                    f"UPDATE orders SET user_id = ? WHERE public_id IN ({claim_placeholders}) AND user_id IS NULL"
+                )
+                conn.execute(update_query, [user_id, *claimed])
+                conn.commit()
+            return claimed
+        finally:
+            conn.close()
+
+

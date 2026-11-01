@@ -267,6 +267,7 @@ const Auth = {
     if (!res.ok) throw new Error(data.detail || 'Login failed');
     this.user = data.user;
     this.notify();
+    await this.syncGuestTickets();
     return data.user;
   },
 
@@ -280,7 +281,28 @@ const Auth = {
     if (!res.ok) throw new Error(data.detail || 'Registration failed');
     this.user = data.user;
     this.notify();
+    await this.syncGuestTickets();
     return data.user;
+  },
+
+  async syncGuestTickets() {
+    if (!this.user) return [];
+    const ids = Tickets.ids();
+    if (!ids || !ids.length) return [];
+    try {
+      const res = await fetch('/api/user/sync-tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_ids: ids }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.claimed || [];
+      }
+    } catch (e) {
+      console.error('Failed to sync guest tickets', e);
+    }
+    return [];
   },
 
   async logout() {
