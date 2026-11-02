@@ -9,3 +9,5 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 .aws-deploy.env
+db_backup/
+
